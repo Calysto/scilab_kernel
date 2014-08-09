@@ -6,7 +6,7 @@ To test it, install with ``setup.py``, then::
 
     ipython qtconsole --kernel scilab
 
-It supports command history, calltips, the ``?`` help magic, and completion.
+It supports command history, the ``?`` help magic, and completion.
 
 For details of how this works, see IPython's docs on `wrapper kernels
 <http://ipython.org/ipython-doc/dev/development/wrapperkernels.html>`_.

@@ -4,14 +4,16 @@ from scilab2py import Scilab2PyError, scilab
 
 import os
 import signal
-from subprocess import check_output
+from subprocess import check_output, CalledProcessError
 import re
 import logging
 
 __version__ = '0.1'
 
-version_pat = re.compile(r'version (\d+(\.\d+)+)')
+version_pat = re.compile(r'version "(\d+(\.\d+)+)')
 
+
+# TODO: allow inline plotting
 
 class ScilabKernel(Kernel):
     implementation = 'scilab_kernel'
@@ -20,6 +22,7 @@ class ScilabKernel(Kernel):
 
     @property
     def language_version(self):
+        self.log.info(self.banner)
         m = version_pat.search(self.banner)
         return m.group(1)
 
@@ -28,12 +31,19 @@ class ScilabKernel(Kernel):
     @property
     def banner(self):
         if self._banner is None:
-            self._banner = check_output(['scilab',
-                                         '-version']).decode('utf-8')
+            try:
+                banner = check_output(['scilab',
+                                       '-version']).decode('utf-8')
+            except CalledProcessError as e:
+                banner = e.output
+            self._banner = banner
         return self._banner
 
     def __init__(self, **kwargs):
         Kernel.__init__(self, **kwargs)
+
+        self.log.setLevel(logging.INFO)
+
         # Signal handlers are inherited by forked processes,
         # and we can't easily reset it from the subprocess.
         # Since kernelapp ignores SIGINT except in message handlers,
@@ -43,10 +53,10 @@ class ScilabKernel(Kernel):
         try:
             self.scilab_wrapper = scilab
             scilab.restart()
+            # this forces scilab to start up prior to the kernel
+            self.scilab_wrapper.put('last_kernel_value', '')
         finally:
             signal.signal(signal.SIGINT, sig)
-
-        self.log.setLevel(logging.CRITICAL)
 
         try:
             self.hist_file = os.path.join(locate_profile(),
@@ -78,13 +88,24 @@ class ScilabKernel(Kernel):
             self.do_shutdown(False)
             return abort_msg
 
-        elif code == 'restart':
+        elif code == 'restart' or code.startswith('restart('):
             self.scilab_wrapper.restart()
             return abort_msg
 
         elif code.endswith('?') or code.startswith('?'):
             self._get_help(code)
             return abort_msg
+
+        elif '_' in code:
+
+            def fill_value(match):
+                string = match.string[match.start():match.end()]
+                return string.replace('_', 'last_kernel_value')
+
+            code = re.sub('\W_\W|\W_\Z|\A_\W|\A_\Z', fill_value, code)
+
+        if len(code.replace('(', ' ').split()) == 1:
+            code = 'disp(%s)' % code
 
         interrupted = False
         try:
@@ -100,13 +121,16 @@ class ScilabKernel(Kernel):
 
         except Exception:
             self.scilab_wrapper.restart()
-            output = 'Uncaught Exception, Restarting Octave'
+            output = 'Uncaught Exception, Restarting Scilab'
 
         else:
             if output is None:
                 output = ''
-            elif output == 'Octave Session Interrupted':
+            elif output == 'Scilab Session Interrupted':
                 interrupted = True
+            else:
+                self.scilab_wrapper.put('last_kernel_value', output)
+                output = str(output)
 
         if not silent:
             stream_content = {'name': 'stdout', 'data': output}
@@ -119,7 +143,7 @@ class ScilabKernel(Kernel):
                 'payload': [], 'user_expressions': {}}
 
     def do_complete(self, code, cursor_pos):
-        """Get code completions using Octave's 'completion_matches'"""
+        """Get code completions using Scilab's ``completions``"""
         code = code[:cursor_pos]
         default = {'matches': [], 'cursor_start': 0,
                    'cursor_end': cursor_pos, 'metadata': dict(),
@@ -147,10 +171,12 @@ class ScilabKernel(Kernel):
 
         else:
             start = cursor_pos - len(token)
-            cmd = 'completion_matches("%s")' % token
+            cmd = 'completion("%s")' % token
             output = self.scilab_wrapper._eval([cmd])
-            matches = output.split()
+            if not output:
+                return default
 
+            matches = output.replace('!', ' ').split()
             for item in dir(self.scilab_wrapper):
                 if item.startswith(token) and not item in matches:
                     matches.append(item)
@@ -160,18 +186,9 @@ class ScilabKernel(Kernel):
                 'status': 'ok'}
 
     def do_inspect(self, code, cursor_pos, detail_level=0):
-        """If the code ends with a (, try to display the help browser"""
+        """If the code ends with a (, try to return a calltip docstring"""
         default = {'status': 'aborted', 'data': dict(), 'metadata': dict()}
-        if (not code or not len(code) >= cursor_pos or
-                not code[cursor_pos - 1] == '('):
-            return default
-
-        else:
-            token = code[:cursor_pos - 1].replace(';', '').split()[-1]
-
-            if not self.scilab_wrapper.exists(token) == 0:
-                self.scilab_wrapper.help(token)
-
+        # TODO: display for user-defined functions or variables
         return default
 
     def do_history(self, hist_access_type, output, raw, session=None,
