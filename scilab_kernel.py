@@ -104,9 +104,6 @@ class ScilabKernel(Kernel):
 
             code = re.sub('\W_\W|\W_\Z|\A_\W|\A_\Z', fill_value, code)
 
-        if len(code.replace('(', ' ').split()) == 1:
-            code = 'disp(%s)' % code
-
         interrupted = False
         try:
             output = self.scilab_wrapper._eval([code])
@@ -124,17 +121,9 @@ class ScilabKernel(Kernel):
             output = 'Uncaught Exception, Restarting Scilab'
 
         else:
-            if output is None:
-                output = ''
-            elif output == 'Scilab Session Interrupted':
+            output = self._handle_output(output, silent)
+            if output == 'Scilab Session Interrupted':
                 interrupted = True
-            else:
-                self.scilab_wrapper.put('last_kernel_value', output)
-                output = str(output)
-
-        if not silent:
-            stream_content = {'name': 'stdout', 'data': output}
-            self.send_response(self.iopub_socket, 'stream', stream_content)
 
         if interrupted:
             return abort_msg
@@ -239,6 +228,23 @@ class ScilabKernel(Kernel):
 
         if not self.scilab_wrapper.exists(token) == 0:
             self.scilab_wrapper.help(token)
+
+            output = 'Calling Help Browser for `%s`' % token
+            stream_content = {'name': 'stdout', 'data': output}
+            self.send_response(self.iopub_socket, 'stream', stream_content)
+
+    def _handle_output(self, output, silent):
+        if output is None:
+            output = ''
+        else:
+            self.scilab_wrapper.put('last_kernel_value', output)
+            output = str(output)
+
+        if not silent:
+            stream_content = {'name': 'stdout', 'data': output}
+            self.send_response(self.iopub_socket, 'stream', stream_content)
+
+        return output
 
     def _handle_error(self, err):
         if 'parse error:' in err:
