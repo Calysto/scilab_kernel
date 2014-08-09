@@ -53,9 +53,6 @@ class ScilabKernel(Kernel):
         try:
             self.scilab_wrapper = scilab
             scilab.restart()
-            # this forces scilab to start up prior to the kernel
-            # we need this var because `_` is a function in Scilab
-            self.scilab_wrapper.put('last_kernel_value', '')
         finally:
             signal.signal(signal.SIGINT, sig)
 
@@ -97,17 +94,9 @@ class ScilabKernel(Kernel):
             self._get_help(code)
             return abort_msg
 
-        elif '_' in code:
-
-            def fill_value(match):
-                string = match.string[match.start():match.end()]
-                return string.replace('_', 'last_kernel_value')
-
-            code = re.sub('\W_\W|\W_\Z|\A_\W|\A_\Z', fill_value, code)
-
         interrupted = False
         try:
-            output = self.scilab_wrapper._eval([code])
+            output = self.scilab_wrapper._eval(code)
 
         except KeyboardInterrupt:
             self.scilab_wrapper._session.proc.send_signal(signal.SIGINT)
@@ -122,9 +111,16 @@ class ScilabKernel(Kernel):
             output = 'Uncaught Exception, Restarting Scilab'
 
         else:
-            output = self._handle_output(output, silent)
-            if output == 'Scilab Session Interrupted':
+            if output is None:
+                output = ''
+            elif output == 'Scilab Session Interrupted':
                 interrupted = True
+            else:
+                output = str(output)
+
+        if not silent:
+            stream_content = {'name': 'stdout', 'data': output}
+            self.send_response(self.iopub_socket, 'stream', stream_content)
 
         if interrupted:
             return abort_msg
@@ -233,19 +229,6 @@ class ScilabKernel(Kernel):
             output = 'Calling Help Browser for `%s`' % token
             stream_content = {'name': 'stdout', 'data': output}
             self.send_response(self.iopub_socket, 'stream', stream_content)
-
-    def _handle_output(self, output, silent):
-        if output is None:
-            output = ''
-        else:
-            self.scilab_wrapper.put('last_kernel_value', output)
-            output = str(output)
-
-        if not silent:
-            stream_content = {'name': 'stdout', 'data': output}
-            self.send_response(self.iopub_socket, 'stream', stream_content)
-
-        return output
 
     def _handle_error(self, err):
         if 'parse error:' in err:
