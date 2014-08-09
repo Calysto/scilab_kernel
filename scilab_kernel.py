@@ -54,6 +54,7 @@ class ScilabKernel(Kernel):
             self.scilab_wrapper = scilab
             scilab.restart()
             # this forces scilab to start up prior to the kernel
+            # we need this var because `_` is a function in Scilab
             self.scilab_wrapper.put('last_kernel_value', '')
         finally:
             signal.signal(signal.SIGINT, sig)
