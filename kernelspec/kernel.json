@@ -1,5 +1,5 @@
-{"argv":["python","-m","octave_kernel", "-f", "{connection_file}"],
- "display_name":"Octave",
- "language":"octave",
+{"argv":["python","-m","scilab_kernel", "-f", "{connection_file}"],
+ "display_name":"Scilab",
+ "language":"scilab",
  "codemirror_mode":"octave"
 }

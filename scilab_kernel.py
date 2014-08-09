@@ -1,7 +1,6 @@
 from IPython.kernel.zmq.kernelbase import Kernel
 from IPython.utils.path import locate_profile
-from IPython.core.oinspect import Inspector, cast_unicode
-from oct2py import Oct2PyError, octave
+from scilab2py import Scilab2PyError, scilab
 
 import os
 import signal
@@ -9,15 +8,15 @@ from subprocess import check_output
 import re
 import logging
 
-__version__ = '0.3'
+__version__ = '0.1'
 
 version_pat = re.compile(r'version (\d+(\.\d+)+)')
 
 
-class OctaveKernel(Kernel):
-    implementation = 'octave_kernel'
+class ScilabKernel(Kernel):
+    implementation = 'scilab_kernel'
     implementation_version = __version__
-    language = 'octave'
+    language = 'scilab'
 
     @property
     def language_version(self):
@@ -29,8 +28,8 @@ class OctaveKernel(Kernel):
     @property
     def banner(self):
         if self._banner is None:
-            self._banner = check_output(['octave',
-                                         '--version']).decode('utf-8')
+            self._banner = check_output(['scilab',
+                                         '-version']).decode('utf-8')
         return self._banner
 
     def __init__(self, **kwargs):
@@ -42,27 +41,22 @@ class OctaveKernel(Kernel):
         # so that octave and its children are interruptible.
         sig = signal.signal(signal.SIGINT, signal.SIG_DFL)
         try:
-            self.octavewrapper = octave
-            octave.restart()
+            self.scilab_wrapper = scilab
+            scilab.restart()
         finally:
             signal.signal(signal.SIGINT, sig)
-
-        self.inspector = Inspector()
-        self.inspector.set_active_scheme("Linux")
 
         self.log.setLevel(logging.CRITICAL)
 
         try:
             self.hist_file = os.path.join(locate_profile(),
-                                          'octave_kernel.hist')
+                                          'scilab_kernel.hist')
         except IOError:
             self.hist_file = None
             self.log.warn('No default profile found, history unavailable')
 
         self.max_hist_cache = 1000
         self.hist_cache = []
-        self.docstring_cache = {}
-        self.help_cache = {}
 
     def do_execute(self, code, silent, store_history=True,
                    user_expressions=None, allow_stdin=False):
@@ -85,7 +79,7 @@ class OctaveKernel(Kernel):
             return abort_msg
 
         elif code == 'restart':
-            self.octavewrapper.restart()
+            self.scilab_wrapper.restart()
             return abort_msg
 
         elif code.endswith('?') or code.startswith('?'):
@@ -94,18 +88,18 @@ class OctaveKernel(Kernel):
 
         interrupted = False
         try:
-            output = self.octavewrapper._eval([code])
+            output = self.scilab_wrapper._eval([code])
 
         except KeyboardInterrupt:
-            self.octavewrapper._session.proc.send_signal(signal.SIGINT)
+            self.scilab_wrapper._session.proc.send_signal(signal.SIGINT)
             interrupted = True
-            output = 'Octave Session Interrupted'
+            output = 'Scilab Session Interrupted'
 
-        except Oct2PyError as e:
+        except Scilab2PyError as e:
             return self._handle_error(str(e))
 
         except Exception:
-            self.octavewrapper.restart()
+            self.scilab_wrapper.restart()
             output = 'Uncaught Exception, Restarting Octave'
 
         else:
@@ -154,10 +148,10 @@ class OctaveKernel(Kernel):
         else:
             start = cursor_pos - len(token)
             cmd = 'completion_matches("%s")' % token
-            output = self.octavewrapper._eval([cmd])
+            output = self.scilab_wrapper._eval([cmd])
             matches = output.split()
 
-            for item in dir(self.octavewrapper):
+            for item in dir(self.scilab_wrapper):
                 if item.startswith(token) and not item in matches:
                     matches.append(item)
 
@@ -166,7 +160,7 @@ class OctaveKernel(Kernel):
                 'status': 'ok'}
 
     def do_inspect(self, code, cursor_pos, detail_level=0):
-        """If the code ends with a (, try to return a calltip docstring"""
+        """If the code ends with a (, try to display the help browser"""
         default = {'status': 'aborted', 'data': dict(), 'metadata': dict()}
         if (not code or not len(code) >= cursor_pos or
                 not code[cursor_pos - 1] == '('):
@@ -174,20 +168,9 @@ class OctaveKernel(Kernel):
 
         else:
             token = code[:cursor_pos - 1].replace(';', '').split()[-1]
-            if token in self.docstring_cache:
-                docstring = self.docstring_cache[token]
 
-            elif token in self.help_cache:
-                docstring = self.help_cache[token]['docstring']
-
-            else:
-                docstring = self._get_octave_info(token,
-                                                  detail_level)['docstring']
-                self.docstring_cache[token] = docstring
-
-            if docstring:
-                data = {'text/plain': docstring}
-                return {'status': 'ok', 'data': data, 'metadata': dict()}
+            if not self.scilab_wrapper.exists(token) == 0:
+                self.scilab_wrapper.help(token)
 
         return default
 
@@ -219,10 +202,10 @@ class OctaveKernel(Kernel):
         self.log.debug("**Shutting down")
 
         if restart:
-            self.octavewrapper.restart()
+            self.scilab_wrapper.restart()
 
         else:
-            self.octavewrapper.close()
+            self.scilab_wrapper.close()
 
         if self.hist_file:
             with open(self.hist_file, 'wb') as fid:
@@ -231,37 +214,22 @@ class OctaveKernel(Kernel):
         return {'status': 'ok', 'restart': restart}
 
     def _get_help(self, code):
-        if code.startswith('??') or code.endswith('??'):
-            detail_level = 1
-        else:
-            detail_level = 0
-
         code = code.replace('?', '')
         tokens = code.replace(';', ' ').split()
         if not tokens:
             return
         token = tokens[-1]
 
-        if token in self.help_cache:
-            info = self.help_cache[token]
-
-        else:
-            info = self._get_octave_info(token, detail_level)
-            self.help_cache[token] = info
-            if token in self.docstring_cache:
-                del self.docstring_cache[token]
-
-        output = self._get_printable_info(info, detail_level)
-        stream_content = {'name': 'stdout', 'data': output}
-        self.send_response(self.iopub_socket, 'stream', stream_content)
+        if not self.scilab_wrapper.exists(token) == 0:
+            self.scilab_wrapper.help(token)
 
     def _handle_error(self, err):
         if 'parse error:' in err:
             err = 'Parse Error'
 
-        elif 'Octave returned:' in err:
-            err = err[err.index('Octave returned:'):]
-            err = err[len('Octave returned:'):].lstrip()
+        elif 'Scilab returned:' in err:
+            err = err[err.index('Scilab returned:'):]
+            err = err[len('Scilab returned:'):].lstrip()
 
         elif 'Syntax Error' in err:
             err = 'Syntax Error'
@@ -272,82 +240,6 @@ class OctaveKernel(Kernel):
         return {'status': 'error', 'execution_count': self.execution_count,
                 'ename': '', 'evalue': err, 'traceback': []}
 
-    def _get_printable_info(self, info, detail_level=0):
-        inspector = self.inspector
-        displayfields = []
-
-        def add_fields(fields):
-            for title, key in fields:
-                field = info[key]
-                if field is not None:
-                    displayfields.append((title, field.rstrip()))
-
-        add_fields(inspector.pinfo_fields1)
-        add_fields(inspector.pinfo_fields2)
-        add_fields(inspector.pinfo_fields3)
-
-        # Source or docstring, depending on detail level and whether
-        # source found.
-        if detail_level > 0 and info['source'] is not None:
-            source = cast_unicode(info['source'])
-            displayfields.append(("Source",  source))
-
-        elif info['docstring'] is not None:
-            displayfields.append(("Docstring", info["docstring"]))
-
-        # Info for objects:
-        else:
-            add_fields(inspector.pinfo_fields_obj)
-
-        # Finally send to printer/pager:
-        if displayfields:
-            return inspector._format_fields(displayfields)
-
-    def _get_octave_info(self, obj, detail_level):
-        info = dict(argspec=None, base_class=None, call_def=None,
-                    call_docstring=None, class_docstring=None,
-                    definition=None, docstring=None, file=None,
-                    found=False, init_definition=None,
-                    init_docstring=None, isalias=0, isclass=None,
-                    ismagic=0, length=None, name='', namespace=None,
-                    source=None, string_form=None, type_name='')
-
-        oc = self.octavewrapper
-
-        if obj in dir(oc):
-            obj = getattr(oc, obj)
-            return self.inspector.info(obj, detail_level=detail_level)
-
-        exist = oc.run('exist "%s"' % obj)
-        if exist.endswith('0'):
-            return info
-
-        try:
-            help_str = oc.run('help %s' % obj)
-        except Oct2PyError:
-            help_str = None
-        type_str = oc.type(obj)[0].strip()
-        cls_str = oc.run("class %s" % obj)[6:]
-
-        type_first_line = type_str.splitlines()[0]
-        type_str = '\n'.join(type_str.splitlines()[1:])
-        is_var = 'is a variable' in type_first_line
-
-        info['found'] = True
-        info['docstring'] = help_str or type_first_line
-        info['type_name'] = cls_str if is_var else 'built-in function'
-        info['source'] = help_str
-        info['string_form'] = obj if not is_var else type_str.rstrip()
-
-        if type_first_line.rstrip().endswith('.m'):
-            info['file'] = type_first_line.split()[-1]
-            info['type_name'] = 'function'
-            info['source'] = type_str
-            if not help_str:
-                info['docstring'] = None
-
-        return info
-
 if __name__ == '__main__':
     from IPython.kernel.zmq.kernelapp import IPKernelApp
-    IPKernelApp.launch_instance(kernel_class=OctaveKernel)
+    IPKernelApp.launch_instance(kernel_class=ScilabKernel)
