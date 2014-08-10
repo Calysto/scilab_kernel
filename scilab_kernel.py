@@ -1,5 +1,6 @@
 from IPython.kernel.zmq.kernelbase import Kernel
 from IPython.utils.path import locate_profile
+from IPython.core.oinspect import Inspector, cast_unicode
 from scilab2py import Scilab2PyError, scilab
 
 import os
@@ -42,7 +43,7 @@ class ScilabKernel(Kernel):
     def __init__(self, **kwargs):
         Kernel.__init__(self, **kwargs)
 
-        self.log.setLevel(logging.INFO)
+        self.log.setLevel(logging.CRITICAL)
 
         # Signal handlers are inherited by forked processes,
         # and we can't easily reset it from the subprocess.
@@ -62,6 +63,9 @@ class ScilabKernel(Kernel):
         except IOError:
             self.hist_file = None
             self.log.warn('No default profile found, history unavailable')
+
+        self.inspector = Inspector()
+        self.inspector.set_active_scheme("Linux")
 
         self.max_hist_cache = 1000
         self.hist_cache = []
@@ -159,7 +163,7 @@ class ScilabKernel(Kernel):
             start = cursor_pos - len(token)
             cmd = 'completion("%s")' % token
             output = self.scilab_wrapper._eval([cmd])
-            if not output:
+            if output is None or output == '':
                 return default
 
             matches = output.replace('!', ' ').split()
@@ -174,7 +178,20 @@ class ScilabKernel(Kernel):
     def do_inspect(self, code, cursor_pos, detail_level=0):
         """If the code ends with a (, try to return a calltip docstring"""
         default = {'status': 'aborted', 'data': dict(), 'metadata': dict()}
-        # TODO: display for user-defined functions or variables
+        if (not code or not len(code) >= cursor_pos or
+                not code[cursor_pos - 1] == '('):
+            return default
+
+        else:
+            token = code[:cursor_pos - 1].replace(';', '').split()[-1]
+            self.log.info(token)
+            docstring = self._get_scilab_info(token,
+                                              detail_level)['docstring']
+
+        if docstring:
+            data = {'text/plain': docstring}
+            return {'status': 'ok', 'data': data, 'metadata': dict()}
+
         return default
 
     def do_history(self, hist_access_type, output, raw, session=None,
@@ -191,10 +208,11 @@ class ScilabKernel(Kernel):
         with open(self.hist_file, 'rb') as fid:
             history = fid.readlines()
 
-        history = history[:self.max_hist_cache]
+        history = history[-self.max_hist_cache:]
         self.hist_cache = history
-        self.log.debug('**HISTORY:')
-        self.log.debug(history)
+        self.log.info('**HISTORY:')
+        self.log.info(self.hist_file)
+        self.log.info(history[-10:])
         history = [(None, None, h) for h in history]
 
         return {'history': history}
@@ -202,7 +220,7 @@ class ScilabKernel(Kernel):
     def do_shutdown(self, restart):
         """Shut down the app gracefully, saving history.
         """
-        self.log.debug("**Shutting down")
+        self.log.info("**Shutting down")
 
         if restart:
             self.scilab_wrapper.restart()
@@ -217,16 +235,27 @@ class ScilabKernel(Kernel):
         return {'status': 'ok', 'restart': restart}
 
     def _get_help(self, code):
+        if code.startswith('??') or code.endswith('??'):
+            detail_level = 1
+        else:
+            detail_level = 0
+
         code = code.replace('?', '')
         tokens = code.replace(';', ' ').split()
         if not tokens:
             return
         token = tokens[-1]
 
-        if not self.scilab_wrapper.exists(token) == 0:
+        info = self._get_scilab_info(token, detail_level)
+        if 'built-in Scilab function.' in info['docstring']:
             self.scilab_wrapper.help(token)
 
             output = 'Calling Help Browser for `%s`' % token
+            stream_content = {'name': 'stdout', 'data': output}
+            self.send_response(self.iopub_socket, 'stream', stream_content)
+
+        else:
+            output = self._get_printable_info(info, detail_level)
             stream_content = {'name': 'stdout', 'data': output}
             self.send_response(self.iopub_socket, 'stream', stream_content)
 
@@ -246,6 +275,86 @@ class ScilabKernel(Kernel):
 
         return {'status': 'error', 'execution_count': self.execution_count,
                 'ename': '', 'evalue': err, 'traceback': []}
+
+    def _get_printable_info(self, info, detail_level=0):
+        inspector = self.inspector
+        displayfields = []
+
+        def add_fields(fields):
+            for title, key in fields:
+                field = info[key]
+                if field is not None:
+                    displayfields.append((title, field.rstrip()))
+
+        add_fields(inspector.pinfo_fields1)
+        add_fields(inspector.pinfo_fields2)
+        add_fields(inspector.pinfo_fields3)
+
+        # Source or docstring, depending on detail level and whether
+        # source found.
+        if detail_level > 0 and info['source'] is not None:
+            source = cast_unicode(info['source'])
+            displayfields.append(("Source",  source))
+
+        elif info['docstring'] is not None:
+            displayfields.append(("Docstring", info["docstring"]))
+
+        # Info for objects:
+        else:
+            add_fields(inspector.pinfo_fields_obj)
+
+        # Finally send to printer/pager:
+        if displayfields:
+            return inspector._format_fields(displayfields)
+
+    def _get_scilab_info(self, obj, detail_level):
+        info = dict(argspec=None, base_class=None, call_def=None,
+                    call_docstring=None, class_docstring=None,
+                    definition=None, docstring=None, file=None,
+                    found=False, init_definition=None,
+                    init_docstring=None, isalias=0, isclass=None,
+                    ismagic=0, length=None, name='', namespace=None,
+                    source=None, string_form=None, type_name='')
+
+        sci = self.scilab_wrapper
+
+        if obj in dir(sci):
+            obj = getattr(sci, obj)
+            return self.inspector.info(obj, detail_level=detail_level)
+
+        exist = sci.run('exists("%s")' % obj)
+        if exist == 0:
+            return info
+
+        typeof = sci._eval('typeof(%s)' % obj)
+        lookup = dict(st="structure array", ce="cell array",
+                      fptr="built-in Scilab function")
+        typeof = lookup.get(typeof, typeof)
+
+        var = None
+        if typeof in ['function', 'built-in Scilab function']:
+            docstring = sci._get_doc(obj)
+        else:
+            docstring = 'A %s' % typeof
+            try:
+                var = sci.get(obj)
+            except Scilab2PyError:
+                pass
+
+        if typeof == 'function':
+            source = sci._eval('fun2string(%s)' % obj)
+            source = source.replace('!', '').splitlines()
+            source = '\n'.join(source[::2])
+        else:
+            source = docstring
+
+        info['found'] = True
+        info['docstring'] = docstring
+        info['type_name'] = typeof.capitalize()
+        info['source'] = source
+        info['string_form'] = obj if var is None else str(var)
+
+        return info
 
 if __name__ == '__main__':
     from IPython.kernel.zmq.kernelapp import IPKernelApp
