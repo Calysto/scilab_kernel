@@ -43,7 +43,7 @@ class ScilabKernel(Kernel):
     def __init__(self, **kwargs):
         Kernel.__init__(self, **kwargs)
 
-        self.log.setLevel(logging.CRITICAL)
+        self.log.setLevel(logging.INFO)
 
         # Signal handlers are inherited by forked processes,
         # and we can't easily reset it from the subprocess.
@@ -54,6 +54,8 @@ class ScilabKernel(Kernel):
         try:
             self.scilab_wrapper = scilab
             scilab.restart()
+            # start scilab and override gettext function
+            self.scilab_wrapper._eval('_ = ""')
         finally:
             signal.signal(signal.SIGINT, sig)
 
@@ -147,29 +149,18 @@ class ScilabKernel(Kernel):
             return default
         token = tokens[-1]
 
-        if os.sep in token:
-            dname = os.path.dirname(token)
-            rest = os.path.basename(token)
+        start = cursor_pos - len(token)
+        cmd = 'x = completion("%s");' % token
+        output = self.scilab_wrapper._eval(cmd)
+        matches = []
 
-            if os.path.exists(dname):
-                files = os.listdir(dname)
-                matches = [f for f in files if f.startswith(rest)]
-                start = cursor_pos - len(rest)
-
-            else:
-                return default
-
-        else:
-            start = cursor_pos - len(token)
-            cmd = 'completion("%s")' % token
-            output = self.scilab_wrapper._eval([cmd])
-            if output is None or output == '':
-                return default
-
+        if not output is None:
             matches = output.replace('!', ' ').split()
             for item in dir(self.scilab_wrapper):
                 if item.startswith(token) and not item in matches:
                     matches.append(item)
+
+        matches.extend(_complete_path(token))
 
         return {'matches': matches, 'cursor_start': start,
                 'cursor_end': cursor_pos, 'metadata': dict(),
@@ -184,9 +175,9 @@ class ScilabKernel(Kernel):
 
         else:
             token = code[:cursor_pos - 1].replace(';', '').split()[-1]
-            self.log.info(token)
-            docstring = self._get_scilab_info(token,
-                                              detail_level)['docstring']
+            info = _get_scilab_info(self.scilab_wrapper, self.inspector,
+                                    token, detail_level)
+            docstring = info['docstring']
 
         if docstring:
             data = {'text/plain': docstring}
@@ -246,7 +237,9 @@ class ScilabKernel(Kernel):
             return
         token = tokens[-1]
 
-        info = self._get_scilab_info(token, detail_level)
+        info = _get_scilab_info(self.scilab_wrapper, self.inspector,
+                                token, detail_level)
+
         if 'built-in Scilab function.' in info['docstring']:
             self.scilab_wrapper.help(token)
 
@@ -255,7 +248,7 @@ class ScilabKernel(Kernel):
             self.send_response(self.iopub_socket, 'stream', stream_content)
 
         else:
-            output = self._get_printable_info(info, detail_level)
+            output = _get_printable_info(self.inspector, info, detail_level)
             stream_content = {'name': 'stdout', 'data': output}
             self.send_response(self.iopub_socket, 'stream', stream_content)
 
@@ -276,85 +269,125 @@ class ScilabKernel(Kernel):
         return {'status': 'error', 'execution_count': self.execution_count,
                 'ename': '', 'evalue': err, 'traceback': []}
 
-    def _get_printable_info(self, info, detail_level=0):
-        inspector = self.inspector
-        displayfields = []
 
-        def add_fields(fields):
-            for title, key in fields:
-                field = info[key]
-                if field is not None:
-                    displayfields.append((title, field.rstrip()))
+def _get_printable_info(inspector, info, detail_level=0):
+    displayfields = []
 
-        add_fields(inspector.pinfo_fields1)
-        add_fields(inspector.pinfo_fields2)
-        add_fields(inspector.pinfo_fields3)
+    def add_fields(fields):
+        for title, key in fields:
+            field = info[key]
+            if field is not None:
+                displayfields.append((title, field.rstrip()))
 
-        # Source or docstring, depending on detail level and whether
-        # source found.
-        if detail_level > 0 and info['source'] is not None:
-            source = cast_unicode(info['source'])
-            displayfields.append(("Source",  source))
+    add_fields(inspector.pinfo_fields1)
+    add_fields(inspector.pinfo_fields2)
+    add_fields(inspector.pinfo_fields3)
 
-        elif info['docstring'] is not None:
-            displayfields.append(("Docstring", info["docstring"]))
+    # Source or docstring, depending on detail level and whether
+    # source found.
+    if detail_level > 0 and info['source'] is not None:
+        source = cast_unicode(info['source'])
+        displayfields.append(("Source",  source))
 
-        # Info for objects:
-        else:
-            add_fields(inspector.pinfo_fields_obj)
+    elif info['docstring'] is not None:
+        displayfields.append(("Docstring", info["docstring"]))
 
-        # Finally send to printer/pager:
-        if displayfields:
-            return inspector._format_fields(displayfields)
+    # Info for objects:
+    else:
+        add_fields(inspector.pinfo_fields_obj)
 
-    def _get_scilab_info(self, obj, detail_level):
-        info = dict(argspec=None, base_class=None, call_def=None,
-                    call_docstring=None, class_docstring=None,
-                    definition=None, docstring=None, file=None,
-                    found=False, init_definition=None,
-                    init_docstring=None, isalias=0, isclass=None,
-                    ismagic=0, length=None, name='', namespace=None,
-                    source=None, string_form=None, type_name='')
+    # Finally send to printer/pager:
+    if displayfields:
+        return inspector._format_fields(displayfields)
 
-        sci = self.scilab_wrapper
 
-        if obj in dir(sci):
-            obj = getattr(sci, obj)
-            return self.inspector.info(obj, detail_level=detail_level)
+def _get_scilab_info(scilab, inspector, obj, detail_level):
+    info = dict(argspec=None, base_class=None, call_def=None,
+                call_docstring=None, class_docstring=None,
+                definition=None, docstring=None, file=None,
+                found=False, init_definition=None,
+                init_docstring=None, isalias=0, isclass=None,
+                ismagic=0, length=None, name='', namespace=None,
+                source=None, string_form=None, type_name='')
 
-        exist = sci.run('exists("%s")' % obj)
-        if exist == 0:
-            return info
+    sci = scilab
 
-        typeof = sci._eval('typeof(%s)' % obj)
-        lookup = dict(st="structure array", ce="cell array",
-                      fptr="built-in Scilab function")
-        typeof = lookup.get(typeof, typeof)
+    if obj in dir(sci):
+        obj = getattr(sci, obj)
+        return inspector.info(obj, detail_level=detail_level)
 
-        var = None
-        if typeof in ['function', 'built-in Scilab function']:
-            docstring = sci._get_doc(obj)
-        else:
-            docstring = 'A %s' % typeof
-            try:
-                var = sci.get(obj)
-            except Scilab2PyError:
-                pass
-
-        if typeof == 'function':
-            source = sci._eval('fun2string(%s)' % obj)
-            source = source.replace('!', '').splitlines()
-            source = '\n'.join(source[::2])
-        else:
-            source = docstring
-
-        info['found'] = True
-        info['docstring'] = docstring
-        info['type_name'] = typeof.capitalize()
-        info['source'] = source
-        info['string_form'] = obj if var is None else str(var)
-
+    exist = sci._eval('exists("%s");' % obj)
+    if exist == 0 or exist is None:
         return info
+
+    typeof = sci._eval('typeof(%s);' % obj) or 'Error'
+    lookup = dict(st="structure array", ce="cell array",
+                  fptr="built-in Scilab function")
+    typeof = lookup.get(typeof, typeof)
+
+    var = None
+    if typeof in ['function', 'built-in Scilab function']:
+        docstring = sci._get_doc(obj) or ''
+
+        if typeof == 'built-in Scilab function':
+            before = """Use run("help %s") for full docs.""" % obj
+            after = "Type `help %s` to bring up the Help Browser" % obj
+            docstring = docstring.replace(before, after)
+
+    else:
+        docstring = 'A %s' % typeof
+        try:
+            var = sci.get(obj)
+        except Scilab2PyError:
+            pass
+
+    source = docstring
+
+    if typeof == 'function':
+        source = sci._eval('fun2string(%s);' % obj) or ''
+        source = source.replace('!', '').splitlines()
+        source = '\n'.join(source[::2])
+
+    info['found'] = True
+    info['docstring'] = docstring
+    info['type_name'] = typeof.capitalize()
+    info['source'] = source
+    info['string_form'] = obj if var is None else str(var)
+
+    return info
+
+
+def _listdir(root):
+    "List directory 'root' appending the path separator to subdirs."
+    res = []
+    for name in os.listdir(root):
+        path = os.path.join(root, name)
+        if os.path.isdir(path):
+            name += os.sep
+        res.append(name)
+    return res
+
+
+def _complete_path(path=None):
+    """Perform completion of filesystem path.
+
+    http://stackoverflow.com/questions/5637124/tab-completion-in-pythons-raw-input
+    """
+    if not path:
+        return _listdir('.')
+    dirname, rest = os.path.split(path)
+    tmp = dirname if dirname else '.'
+    res = [os.path.join(dirname, p)
+           for p in _listdir(tmp) if p.startswith(rest)]
+    # more than one match, or single match which does not exist (typo)
+    if len(res) > 1 or not os.path.exists(path):
+        return res
+    # resolved to a single directory, so return list of files below it
+    if os.path.isdir(path):
+        return [os.path.join(path, p) for p in _listdir(path)]
+    # exact file match terminates this completion
+    return [path + ' ']
+
 
 if __name__ == '__main__':
     from IPython.kernel.zmq.kernelapp import IPKernelApp
