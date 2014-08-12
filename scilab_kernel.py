@@ -32,9 +32,14 @@ class ScilabKernel(Kernel):
     @property
     def banner(self):
         if self._banner is None:
+            if os.name == 'nt':
+                prog = 'Scilex'
+            else:
+                prog = 'scilab'
+
             try:
-                banner = check_output(['scilab',
-                                       '-version']).decode('utf-8')
+                banner = check_output([prog, '-version'])
+                banner = banner.decode('utf-8')
             except CalledProcessError as e:
                 banner = e.output
             self._banner = banner
