@@ -41,7 +41,7 @@ class ScilabKernel(Kernel):
                 banner = check_output([prog, '-version'])
                 banner = banner.decode('utf-8')
             except CalledProcessError as e:
-                banner = e.output
+                banner = e.output.decode('utf-8')
             self._banner = banner
         return self._banner
 
@@ -60,7 +60,9 @@ class ScilabKernel(Kernel):
             self.scilab_wrapper = scilab
             scilab.restart()
             # start scilab and override gettext function
+            self.log.info('starting up')
             self.scilab_wrapper._eval('_ = ""')
+            self.log.info('started')
         finally:
             signal.signal(signal.SIGINT, sig)
 
@@ -80,6 +82,7 @@ class ScilabKernel(Kernel):
     def do_execute(self, code, silent, store_history=True,
                    user_expressions=None, allow_stdin=False):
         """Execute a line of code in Octave."""
+
         code = code.strip()
         abort_msg = {'status': 'abort',
                      'execution_count': self.execution_count}
@@ -141,6 +144,7 @@ class ScilabKernel(Kernel):
 
     def do_complete(self, code, cursor_pos):
         """Get code completions using Scilab's ``completions``"""
+
         code = code[:cursor_pos]
         default = {'matches': [], 'cursor_start': 0,
                    'cursor_end': cursor_pos, 'metadata': dict(),
@@ -155,8 +159,9 @@ class ScilabKernel(Kernel):
         token = tokens[-1]
 
         start = cursor_pos - len(token)
-        cmd = 'x = completion("%s");' % token
+        cmd = 'completion("%s")' % token
         output = self.scilab_wrapper._eval(cmd)
+
         matches = []
 
         if not output is None:
@@ -199,12 +204,13 @@ class ScilabKernel(Kernel):
 
         if not os.path.exists(self.hist_file):
             with open(self.hist_file, 'wb') as fid:
-                fid.write('')
+                fid.write(''.encode('utf-8'))
 
         with open(self.hist_file, 'rb') as fid:
             history = fid.readlines()
 
         history = history[-self.max_hist_cache:]
+        history = [h.decode('utf-8') for h in history]
         self.hist_cache = history
         self.log.info('**HISTORY:')
         self.log.info(self.hist_file)
@@ -226,7 +232,8 @@ class ScilabKernel(Kernel):
 
         if self.hist_file:
             with open(self.hist_file, 'wb') as fid:
-                fid.write('\n'.join(self.hist_cache[-self.max_hist_cache:]))
+                msg = '\n'.join(self.hist_cache[-self.max_hist_cache:])
+                fid.write(msg.encode('utf-8'))
 
         return {'status': 'ok', 'restart': restart}
 
@@ -252,7 +259,7 @@ class ScilabKernel(Kernel):
             stream_content = {'name': 'stdout', 'data': output}
             self.send_response(self.iopub_socket, 'stream', stream_content)
 
-        else:
+        elif info['docstring']:
             output = _get_printable_info(self.inspector, info, detail_level)
             stream_content = {'name': 'stdout', 'data': output}
             self.send_response(self.iopub_socket, 'stream', stream_content)
@@ -309,7 +316,7 @@ def _get_printable_info(inspector, info, detail_level=0):
 def _get_scilab_info(scilab, inspector, obj, detail_level):
     info = dict(argspec=None, base_class=None, call_def=None,
                 call_docstring=None, class_docstring=None,
-                definition=None, docstring=None, file=None,
+                definition=None, docstring='', file=None,
                 found=False, init_definition=None,
                 init_docstring=None, isalias=0, isclass=None,
                 ismagic=0, length=None, name='', namespace=None,
@@ -321,7 +328,7 @@ def _get_scilab_info(scilab, inspector, obj, detail_level):
         obj = getattr(sci, obj)
         return inspector.info(obj, detail_level=detail_level)
 
-    exist = sci._eval('exists("%s");' % obj)
+    exist = sci._eval('exists("%s")' % obj)
     if exist == 0 or exist is None:
         return info
 
