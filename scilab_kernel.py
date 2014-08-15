@@ -14,8 +14,6 @@ __version__ = '0.1'
 version_pat = re.compile(r'version "(\d+(\.\d+)+)')
 
 
-# TODO: allow inline plotting
-
 class ScilabKernel(Kernel):
     implementation = 'scilab_kernel'
     implementation_version = __version__
@@ -48,7 +46,7 @@ class ScilabKernel(Kernel):
     def __init__(self, **kwargs):
         Kernel.__init__(self, **kwargs)
 
-        self.log.setLevel(logging.CRITICAL)
+        self.log.setLevel(logging.INFO)
 
         # Signal handlers are inherited by forked processes,
         # and we can't easily reset it from the subprocess.
@@ -78,6 +76,7 @@ class ScilabKernel(Kernel):
 
         self.max_hist_cache = 1000
         self.hist_cache = []
+        self.inline = False
 
     def do_execute(self, code, silent, store_history=True,
                    user_expressions=None, allow_stdin=False):
@@ -108,8 +107,17 @@ class ScilabKernel(Kernel):
             self._get_help(code)
             return abort_msg
 
+        elif code == '%inline':
+            self.inline = not self.inline
+            output = "Inline is set to %s" % self.inline
+            stream_content = {'name': 'stdout', 'data': output}
+            self.send_response(self.iopub_socket, 'stream', stream_content)
+            return abort_msg
+
         interrupted = False
         try:
+            if self.inline:
+                self._pre_call()
             output = self.scilab_wrapper._eval(code)
 
         except KeyboardInterrupt:
@@ -135,6 +143,9 @@ class ScilabKernel(Kernel):
         if not silent:
             stream_content = {'name': 'stdout', 'data': output}
             self.send_response(self.iopub_socket, 'stream', stream_content)
+
+            if self.inline:
+                self._handle_figures()
 
         if interrupted:
             return abort_msg
@@ -236,6 +247,73 @@ class ScilabKernel(Kernel):
                 fid.write(msg.encode('utf-8'))
 
         return {'status': 'ok', 'restart': restart}
+
+    def _pre_call(self):
+        """Set the default figure properties"""
+
+        code = """
+        h = gdf()
+        h.figure_position = [0, 0]
+        h.toolbar_visible = 'off'
+        h.menubar_visible = 'off'
+        h.infobar_visible = 'off'
+        """
+        self.scilab_wrapper._eval(code)
+
+    def _handle_figures(self):
+        import tempfile
+        from shutil import rmtree
+        import glob
+        import base64
+
+        plot_dir = tempfile.mkdtemp().replace('\\', '/')
+        plot_fmt = 'png'
+
+        code = """
+           ids_array=winsid();
+           for i=1:length(ids_array)
+              id=ids_array(i);
+              outfile = sprintf('%(plot_dir)s/__ipy_sci_fig_%%03d', i);
+              if '%(plot_fmt)s' == 'jpg' then
+                xs2jpg(id, outfile + '.jpg')
+              elseif '%(plot_fmt)s' == 'jpeg' then
+                xs2jpg(id, outfile + '.jpeg')
+              elseif '%(plot_fmt)s' == 'png' then
+                xs2png(id, outfile)
+              else
+                xs2svg(id, outfile)
+              end
+              close(get_figure_handle(id));
+           end
+        """ % (locals())
+
+        self.scilab_wrapper._eval(code)
+
+        width, height = 640, 480
+
+        _mimetypes = {'png': 'image/png',
+                      'svg': 'image/svg+xml',
+                      'jpg': 'image/jpeg',
+                      'jpeg': 'image/jpeg'}
+
+        images = []
+        for imgfile in glob.glob("%s/*" % plot_dir):
+            with open(imgfile, 'rb') as fid:
+                images.append(fid.read())
+        rmtree(plot_dir)
+
+        plot_mime_type = _mimetypes.get(plot_fmt, 'image/png')
+
+        for image in images:
+            image = base64.b64encode(image).decode('ascii')
+            data = {plot_mime_type: image}
+            metadata = {plot_mime_type: {'width': width, 'height': height}}
+
+            self.log.info('Sending a plot')
+            stream_content = {'source': 'octave_kernel', 'data': data,
+                              'metadata': metadata}
+            self.send_response(self.iopub_socket, 'display_data',
+                               stream_content)
 
     def _get_help(self, code):
         if code.startswith('??') or code.endswith('??'):
