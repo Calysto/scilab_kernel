@@ -48,7 +48,7 @@ class ScilabKernel(Kernel):
     def __init__(self, **kwargs):
         Kernel.__init__(self, **kwargs)
 
-        self.log.setLevel(logging.INFO)
+        self.log.setLevel(logging.CRITICAL)
 
         # Signal handlers are inherited by forked processes,
         # and we can't easily reset it from the subprocess.
