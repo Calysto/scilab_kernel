@@ -59,7 +59,7 @@ class ScilabKernel(Kernel):
             scilab.restart()
             # start scilab and override gettext function
             self.log.info('starting up')
-            self.scilab_wrapper._eval('_ = ""')
+            self.scilab_wrapper.eval('_ = ""')
             self.log.info('started')
         finally:
             signal.signal(signal.SIGINT, sig)
@@ -118,7 +118,7 @@ class ScilabKernel(Kernel):
         try:
             if self.inline:
                 self._pre_call()
-            output = self.scilab_wrapper._eval(code)
+            output = self.scilab_wrapper.eval(code)
 
         except KeyboardInterrupt:
             self.scilab_wrapper._session.proc.send_signal(signal.SIGINT)
@@ -171,7 +171,7 @@ class ScilabKernel(Kernel):
 
         start = cursor_pos - len(token)
         cmd = 'completion("%s")' % token
-        output = self.scilab_wrapper._eval(cmd)
+        output = self.scilab_wrapper.eval(cmd)
 
         matches = []
 
@@ -239,7 +239,7 @@ class ScilabKernel(Kernel):
             self.scilab_wrapper.restart()
 
         else:
-            self.scilab_wrapper.close()
+            self.scilab_wrapper.exit()
 
         if self.hist_file:
             with open(self.hist_file, 'wb') as fid:
@@ -258,7 +258,7 @@ class ScilabKernel(Kernel):
         h.menubar_visible = 'off'
         h.infobar_visible = 'off'
         """
-        self.scilab_wrapper._eval(code)
+        self.scilab_wrapper.eval(code)
 
     def _handle_figures(self):
         import tempfile
@@ -287,7 +287,7 @@ class ScilabKernel(Kernel):
            end
         """ % (locals())
 
-        self.scilab_wrapper._eval(code)
+        self.scilab_wrapper.eval(code)
 
         width, height = 640, 480
 
@@ -327,8 +327,12 @@ class ScilabKernel(Kernel):
             return
         token = tokens[-1]
 
-        info = _get_scilab_info(self.scilab_wrapper, self.inspector,
-                                token, detail_level)
+        try:
+            info = _get_scilab_info(self.scilab_wrapper, self.inspector,
+                                    token, detail_level)
+        except Exception as e:
+            self.log.error(e)
+            return
 
         if 'built-in Scilab function.' in info['docstring']:
             self.scilab_wrapper.help(token)
@@ -406,37 +410,32 @@ def _get_scilab_info(scilab, inspector, obj, detail_level):
         obj = getattr(sci, obj)
         return inspector.info(obj, detail_level=detail_level)
 
-    exist = sci._eval('exists("%s")' % obj)
+    exist = sci.eval('exists("%s")' % obj)
     if exist == 0 or exist is None:
         return info
 
-    typeof = sci._eval('typeof(%s);' % obj) or 'Error'
+    typeof = sci.eval('typeof(%s);' % obj) or 'Error'
     lookup = dict(st="structure array", ce="cell array",
                   fptr="built-in Scilab function")
     typeof = lookup.get(typeof, typeof)
 
     var = None
-    if typeof in ['function', 'built-in Scilab function']:
-        docstring = sci._get_doc(obj) or ''
 
-        if typeof == 'built-in Scilab function':
-            before = """Use run("help %s") for full docs.""" % obj
-            after = "Type `help %s` to bring up the Help Browser" % obj
-            docstring = docstring.replace(before, after)
+    if typeof in ['function', 'built-in Scilab function']:
+        docstring = getattr(sci, obj).__doc__
 
     else:
         docstring = 'A %s' % typeof
         try:
-            var = sci.get(obj)
+            var = sci.pull(obj)
         except Scilab2PyError:
             pass
 
-    source = docstring
-
     if typeof == 'function':
-        source = sci._eval('fun2string(%s);' % obj) or ''
-        source = source.replace('!', '').splitlines()
-        source = '\n'.join(source[::2])
+        info['definition'] = docstring.strip().splitlines()[0].strip()
+        docstring = '\n'.join(docstring.strip().splitlines()[1:])
+
+    source = docstring
 
     info['found'] = True
     info['docstring'] = docstring
