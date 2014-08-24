@@ -8,8 +8,14 @@ import signal
 from subprocess import check_output, CalledProcessError
 import re
 import logging
+from optparse import OptionParser
+from glob import glob
+import tempfile
+import base64
+from shutil import rmtree
+from xml.dom import minidom
 
-__version__ = '0.2'
+__version__ = '0.3'
 
 version_pat = re.compile(r'version "(\d+(\.\d+)+)')
 
@@ -59,7 +65,7 @@ class ScilabKernel(Kernel):
             scilab.restart()
             # start scilab and override gettext function
             self.log.info('starting up')
-            self.scilab_wrapper.eval('_ = ""')
+            self.eval('_ = ""')
             self.log.info('started')
         finally:
             signal.signal(signal.SIGINT, sig)
@@ -76,7 +82,15 @@ class ScilabKernel(Kernel):
 
         self.max_hist_cache = 1000
         self.hist_cache = []
+
         self.inline = False
+        self.plot_format = 'png' if not os.name == 'nt' else 'svg'
+        self.plot_size = '640,480'
+        p = self.inline_parser = OptionParser()
+        p.add_option(
+            '-f', '--format', action='store', help='Plot format (png, svg or jpg).')
+        p.add_option('-s', '--size', action='store',
+                     help='Pixel size of plots, "width,height". Default is "-s 400,250".')
 
     def do_execute(self, code, silent, store_history=True,
                    user_expressions=None, allow_stdin=False):
@@ -99,7 +113,7 @@ class ScilabKernel(Kernel):
             self.do_shutdown(False)
             return abort_msg
 
-        elif code == 'restart' or code.startswith('restart('):
+        elif code in ['restart', '%restart'] or code.startswith('restart('):
             self.scilab_wrapper.restart()
             return abort_msg
 
@@ -107,38 +121,24 @@ class ScilabKernel(Kernel):
             self._get_help(code)
             return abort_msg
 
-        elif code == '%inline':
-            self.inline = not self.inline
-            output = "Inline is set to %s" % self.inline
-            stream_content = {'name': 'stdout', 'data': output}
-            self.send_response(self.iopub_socket, 'stream', stream_content)
+        elif code.startswith('%inline'):
+            self._handle_inline(code)
             return abort_msg
 
-        interrupted = False
-        try:
-            if self.inline:
-                self._pre_call()
-            output = self.scilab_wrapper.eval(code)
+        plot_width, plot_height = [int(s) for s in self.plot_size.split(',')]
+        if self.inline:
+            self.plot_dir = tempfile.mkdtemp()
+            self.log.info(self.plot_dir)
+        else:
+            self.plot_dir = None
 
-        except KeyboardInterrupt:
-            self.scilab_wrapper._session.proc.send_signal(signal.SIGINT)
-            interrupted = True
-            output = 'Scilab Session Interrupted'
+        try:
+            output = self.eval(code, plot_dir=self.plot_dir,
+                               plot_format=self.plot_format,
+                               plot_width=plot_width, plot_height=plot_height)
 
         except Scilab2PyError as e:
             return self._handle_error(str(e))
-
-        except Exception:
-            self.scilab_wrapper.restart()
-            output = 'Uncaught Exception, Restarting Scilab'
-
-        else:
-            if output is None:
-                output = ''
-            elif output == 'Scilab Session Interrupted':
-                interrupted = True
-            else:
-                output = str(output)
 
         if not silent:
             stream_content = {'name': 'stdout', 'data': output}
@@ -147,7 +147,7 @@ class ScilabKernel(Kernel):
             if self.inline:
                 self._handle_figures()
 
-        if interrupted:
+        if output == 'Octave Session Interrupted':
             return abort_msg
 
         return {'status': 'ok', 'execution_count': self.execution_count,
@@ -171,7 +171,7 @@ class ScilabKernel(Kernel):
 
         start = cursor_pos - len(token)
         cmd = 'completion("%s")' % token
-        output = self.scilab_wrapper.eval(cmd)
+        output = self.eval(cmd)
 
         matches = []
 
@@ -196,8 +196,7 @@ class ScilabKernel(Kernel):
 
         else:
             token = code[:cursor_pos - 1].replace(';', '').split()[-1]
-            info = _get_scilab_info(self.scilab_wrapper, self.inspector,
-                                    token, detail_level)
+            info = self._get_scilab_info(token, detail_level)
             docstring = info['docstring']
 
         if docstring:
@@ -248,48 +247,36 @@ class ScilabKernel(Kernel):
 
         return {'status': 'ok', 'restart': restart}
 
-    def _pre_call(self):
-        """Set the default figure properties"""
+    def eval(self, code, *args, **kwargs):
+        output = ''
 
-        code = """
-        h = gdf()
-        h.figure_position = [0, 0]
-        h.toolbar_visible = 'off'
-        h.menubar_visible = 'off'
-        h.infobar_visible = 'off'
-        """
-        self.scilab_wrapper.eval(code)
+        try:
+            output = self.scilab_wrapper.eval(str(code), *args, **kwargs)
+
+        except KeyboardInterrupt:
+            self.scilab_wrapper._session.proc.send_signal(signal.SIGINT)
+            output = 'Octave Session Interrupted'
+
+        except Scilab2PyError as e:
+            raise Scilab2PyError(str(e))
+
+        except Exception as e:
+            self.log.error(e)
+            self.scilab_wrapper.restart()
+            output = 'Uncaught Exception, Restarting Octave'
+
+        if output is None:
+            output = ''
+        output = str(output)
+
+        return output
 
     def _handle_figures(self):
-        import tempfile
-        from shutil import rmtree
-        import glob
-        import base64
 
-        plot_dir = tempfile.mkdtemp().replace('\\', '/')
-        plot_fmt = 'png'
+        plot_dir = self.plot_dir
+        plot_format = self.plot_format
 
-        code = """
-           ids_array=winsid();
-           for i=1:length(ids_array)
-              id=ids_array(i);
-              outfile = sprintf('%(plot_dir)s/__ipy_sci_fig_%%03d', i);
-              if '%(plot_fmt)s' == 'jpg' then
-                xs2jpg(id, outfile + '.jpg')
-              elseif '%(plot_fmt)s' == 'jpeg' then
-                xs2jpg(id, outfile + '.jpeg')
-              elseif '%(plot_fmt)s' == 'png' then
-                xs2png(id, outfile)
-              else
-                xs2svg(id, outfile)
-              end
-              close(get_figure_handle(id));
-           end
-        """ % (locals())
-
-        self.scilab_wrapper.eval(code)
-
-        width, height = 640, 480
+        width, height = [int(s) for s in self.plot_size.split(',')]
 
         _mimetypes = {'png': 'image/png',
                       'svg': 'image/svg+xml',
@@ -297,15 +284,18 @@ class ScilabKernel(Kernel):
                       'jpeg': 'image/jpeg'}
 
         images = []
-        for imgfile in glob.glob("%s/*" % plot_dir):
+        for imgfile in glob("%s/*" % plot_dir):
             with open(imgfile, 'rb') as fid:
                 images.append(fid.read())
         rmtree(plot_dir)
 
-        plot_mime_type = _mimetypes.get(plot_fmt, 'image/png')
+        plot_mime_type = _mimetypes.get(plot_format, 'image/png')
 
         for image in images:
-            image = base64.b64encode(image).decode('ascii')
+            if plot_format == 'svg':
+                image = _fix_svg_size(image, size=(width, height))
+            else:
+                image = base64.b64encode(image).decode('ascii')
             data = {plot_mime_type: image}
             metadata = {plot_mime_type: {'width': width, 'height': height}}
 
@@ -328,8 +318,7 @@ class ScilabKernel(Kernel):
         token = tokens[-1]
 
         try:
-            info = _get_scilab_info(self.scilab_wrapper, self.inspector,
-                                    token, detail_level)
+            info = self._get_scilab_info(token, detail_level)
         except Exception as e:
             self.log.error(e)
             return
@@ -363,6 +352,73 @@ class ScilabKernel(Kernel):
         return {'status': 'error', 'execution_count': self.execution_count,
                 'ename': '', 'evalue': err, 'traceback': []}
 
+    def _handle_inline(self, code):
+        if len(code.split()) == 1:
+            self.inline = not self.inline
+        else:
+            self.inline = True
+        if not self.inline:
+            self.plot_size = '620,590'
+
+        args, name = self.inline_parser.parse_args(code.split())
+        self.plot_format = args.format or self.plot_format
+        self.plot_size = args.size or self.plot_size
+
+        state = "OFF" if not self.inline else "ON"
+        output = "Inline plotting is %s" % state
+        stream_content = {'name': 'stdout', 'data': output}
+        self.send_response(self.iopub_socket, 'stream', stream_content)
+
+    def _get_scilab_info(self, obj, detail_level):
+        info = dict(argspec=None, base_class=None, call_def=None,
+                    call_docstring=None, class_docstring=None,
+                    definition=None, docstring='', file=None,
+                    found=False, init_definition=None,
+                    init_docstring=None, isalias=0, isclass=None,
+                    ismagic=0, length=None, name='', namespace=None,
+                    source=None, string_form=None, type_name='')
+
+        sci = self.scilab_wrapper
+
+        if obj in dir(sci):
+            obj = getattr(sci, obj)
+            return self.inspector.info(obj, detail_level=detail_level)
+
+        exist = self.eval('exists("%s")' % obj)
+        if exist == 0 or exist is None:
+            return info
+
+        typeof = self.eval('typeof(%s);' % obj) or 'Error'
+        lookup = dict(st="structure array", ce="cell array",
+                      fptr="built-in Scilab function")
+        typeof = lookup.get(typeof, typeof)
+
+        var = None
+
+        if typeof in ['function', 'built-in Scilab function']:
+            docstring = getattr(sci, obj).__doc__
+
+        else:
+            docstring = 'A %s' % typeof
+            try:
+                var = sci.pull(obj)
+            except Scilab2PyError:
+                pass
+
+        if typeof == 'function':
+            info['definition'] = docstring.strip().splitlines()[0].strip()
+            docstring = '\n'.join(docstring.strip().splitlines()[1:])
+
+        source = docstring
+
+        info['found'] = True
+        info['docstring'] = docstring
+        info['type_name'] = typeof.capitalize()
+        info['source'] = source
+        info['string_form'] = obj if var is None else str(var)
+
+        return info
+
 
 def _get_printable_info(inspector, info, detail_level=0):
     displayfields = []
@@ -394,56 +450,6 @@ def _get_printable_info(inspector, info, detail_level=0):
     if displayfields:
         return inspector._format_fields(displayfields)
 
-
-def _get_scilab_info(scilab, inspector, obj, detail_level):
-    info = dict(argspec=None, base_class=None, call_def=None,
-                call_docstring=None, class_docstring=None,
-                definition=None, docstring='', file=None,
-                found=False, init_definition=None,
-                init_docstring=None, isalias=0, isclass=None,
-                ismagic=0, length=None, name='', namespace=None,
-                source=None, string_form=None, type_name='')
-
-    sci = scilab
-
-    if obj in dir(sci):
-        obj = getattr(sci, obj)
-        return inspector.info(obj, detail_level=detail_level)
-
-    exist = sci.eval('exists("%s")' % obj)
-    if exist == 0 or exist is None:
-        return info
-
-    typeof = sci.eval('typeof(%s);' % obj) or 'Error'
-    lookup = dict(st="structure array", ce="cell array",
-                  fptr="built-in Scilab function")
-    typeof = lookup.get(typeof, typeof)
-
-    var = None
-
-    if typeof in ['function', 'built-in Scilab function']:
-        docstring = getattr(sci, obj).__doc__
-
-    else:
-        docstring = 'A %s' % typeof
-        try:
-            var = sci.pull(obj)
-        except Scilab2PyError:
-            pass
-
-    if typeof == 'function':
-        info['definition'] = docstring.strip().splitlines()[0].strip()
-        docstring = '\n'.join(docstring.strip().splitlines()[1:])
-
-    source = docstring
-
-    info['found'] = True
-    info['docstring'] = docstring
-    info['type_name'] = typeof.capitalize()
-    info['source'] = source
-    info['string_form'] = obj if var is None else str(var)
-
-    return info
 
 
 def _listdir(root):
@@ -477,6 +483,32 @@ def _complete_path(path=None):
     # exact file match terminates this completion
     return [path + ' ']
 
+
+def _fix_svg_size(image, size=None):
+    """
+    Scliab SVGs do not have height/width attributes.  Set
+    these to be the same as the viewBox, so that the browser
+    scales the image correctly.
+
+    Parameters
+    ----------
+    image : str
+        SVG data.
+    size : tuple of int
+        Image width, height.
+
+    """
+    (svg,) = minidom.parseString(image).getElementsByTagName('svg')
+    viewbox = svg.getAttribute('viewBox').split(' ')
+
+    if size is not None:
+        width, height = size
+    else:
+        width, height = viewbox[2:]
+
+    svg.setAttribute('width', '%dpx' % width)
+    svg.setAttribute('height', '%dpx' % height)
+    return svg.toxml()
 
 if __name__ == '__main__':
     from IPython.kernel.zmq.kernelapp import IPKernelApp

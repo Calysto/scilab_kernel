@@ -51,7 +51,7 @@ setup(name='scilab_kernel',
       url='https://github.com/blink1073/scilab_kernel',
       py_modules=['scilab_kernel'],
       cmdclass={'install': install_with_kernelspec},
-      install_requires=['scilab2py', 'IPython >= 3.0'],
+      install_requires=['scilab2py >= 0.3', 'IPython >= 3.0'],
       classifiers=[
           'Framework :: IPython',
           'License :: OSI Approved :: BSD License',

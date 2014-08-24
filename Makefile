@@ -19,6 +19,8 @@ release:
 	python setup.py register
 	python setup.py bdist_wheel upload
 	python setup.py sdist --formats=gztar,zip upload
+	git tag v`python -c "import scilab_kernel;print(scilab_kernel.__version__)"`
+	git push origin master --all
 
 test:
 	make clean
