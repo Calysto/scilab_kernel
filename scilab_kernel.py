@@ -141,7 +141,7 @@ class ScilabKernel(Kernel):
             return self._handle_error(str(e))
 
         if not silent:
-            stream_content = {'name': 'stdout', 'data': output}
+            stream_content = {'name': 'stdout', 'text': output}
             self.send_response(self.iopub_socket, 'stream', stream_content)
 
             if self.inline:

@@ -22,5 +22,5 @@ release: clean
 
 test: clean
 	python setup.py install
-	cd ~; ipython qtconsole --kernel=scilab
+	cd ~; ipython qtconsole --kernel scilab
 	make clean
