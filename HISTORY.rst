@@ -3,6 +3,12 @@
 Release History
 ---------------
 
+0.4 (2014-10-19)
+++++++++++++++++
+- Update for compatibility with Scilab2py 0.5
+- Update for compatibility with IPython 3.0 message spec changes.
+
+
 0.3 (2014-08-23)
 ++++++++++++++++
 - Add %inline --format and --size options.

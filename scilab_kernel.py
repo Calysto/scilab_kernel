@@ -15,7 +15,7 @@ import base64
 from shutil import rmtree
 from xml.dom import minidom
 
-__version__ = '0.3'
+__version__ = '0.4'
 
 version_pat = re.compile(r'version "(\d+(\.\d+)+)')
 
@@ -65,7 +65,7 @@ class ScilabKernel(Kernel):
             scilab.restart()
             # start scilab and override gettext function
             self.log.info('starting up')
-            self.eval('_ = ""')
+            self.eval('_temp = 1;')
             self.log.info('started')
         finally:
             signal.signal(signal.SIGINT, sig)
@@ -384,7 +384,7 @@ class ScilabKernel(Kernel):
             obj = getattr(sci, obj)
             return self.inspector.info(obj, detail_level=detail_level)
 
-        exist = self.eval('exists("%s")' % obj)
+        exist = self.eval('exists("%s");' % obj)
         if exist == 0 or exist is None:
             return info
 
