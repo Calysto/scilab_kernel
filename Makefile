@@ -2,6 +2,8 @@
 .PHONY: all clean test release
 
 export KILL_SCILAB="from scilab2py import kill_scilab; kill_scilab()"
+export NAME=scilab_kernel
+export VERSION=`python -c "import $(NAME); print($(NAME).__version__)"`
 
 all: clean
 	python setup.py install
@@ -17,7 +19,7 @@ release: clean
 	python setup.py register
 	python setup.py bdist_wheel upload
 	python setup.py sdist --formats=gztar,zip upload
-	git tag v`python -c "import scilab_kernel;print(scilab_kernel.__version__)"`
+	git tag v$(VERSION)
 	git push origin --all
 
 test: clean
