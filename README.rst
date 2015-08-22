@@ -1,6 +1,6 @@
 A simple IPython kernel for Scilab
 
-This requires IPython 3, which is not yet released, and `scilab2py <http://pypi.python.org/pypi/scilab2py>`_.
+This requires IPython 3+ and `scilab2py <http://pypi.python.org/pypi/scilab2py>`_.
 
 To test it, install with ``setup.py``, then::
 

@@ -3,6 +3,7 @@ from setuptools.command.install import install
 import json
 import os
 import sys
+from distutils import log
 
 
 kernel_json = {"argv": [sys.executable, "-m", "scilab_kernel", "-f",
@@ -14,17 +15,30 @@ kernel_json = {"argv": [sys.executable, "-m", "scilab_kernel", "-f",
 
 
 class install_with_kernelspec(install):
+
     def run(self):
+        user = '--user' in sys.argv
         # Regular installation
         install.run(self)
 
         # Now write the kernelspec
-        from IPython.kernel.kernelspec import KernelSpecManager
-        from IPython.utils.path import ensure_dir_exists
-        destdir = os.path.join(KernelSpecManager().user_kernel_dir, 'scilab')
-        ensure_dir_exists(destdir)
-        with open(os.path.join(destdir, 'kernel.json'), 'w') as f:
-            json.dump(kernel_json, f, sort_keys=True)
+        try:
+            from ipykernel.kerspec import install_kernel_spec
+        except ImportError:
+            from IPython.kernel.kernelspec import install_kernel_spec
+        from IPython.utils.tempdir import TemporaryDirectory
+        with TemporaryDirectory() as td:
+            os.chmod(td, 0o755)  # Starts off as 700, not user readable
+            with open(os.path.join(td, 'kernel.json'), 'w') as f:
+                json.dump(kernel_json, f, sort_keys=True)
+            log.info('Installing kernel spec')
+            kernel_name = kernel_json['name']
+            try:
+                install_kernel_spec(td, kernel_name, user=user,
+                                    replace=True)
+            except:
+                install_kernel_spec(td, kernel_name, user=not user,
+                                    replace=True)
 
 
 with open('README.rst') as f:
