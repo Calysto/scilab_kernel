@@ -10,7 +10,8 @@ kernel_json = {"argv": [sys.executable, "-m", "scilab_kernel", "-f",
                         "{connection_file}"],
                "display_name": "Scilab",
                "language": "scilab",
-               "codemirror_mode": "Octave"
+               "codemirror_mode": "Octave",
+               "name": "scilab_kernel",
                }
 
 
