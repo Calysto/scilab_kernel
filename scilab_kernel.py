@@ -1,5 +1,9 @@
-from IPython.kernel.zmq.kernelbase import Kernel
-from IPython.utils.path import locate_profile
+try:
+    from ipykernel.kernelbase import Kernel
+    from IPython.paths import locate_profile
+except ImportError:
+    from IPython.kernel.zmq.kernelbase import Kernel
+    from IPython.utils.path import locate_profile
 from IPython.core.oinspect import Inspector, cast_unicode
 from scilab2py import Scilab2PyError, scilab
 
@@ -511,5 +515,8 @@ def _fix_svg_size(image, size=None):
     return svg.toxml()
 
 if __name__ == '__main__':
-    from IPython.kernel.zmq.kernelapp import IPKernelApp
+    try:
+        from ipykernel.kernelapp import IPKernelApp
+    except ImportError:
+        from IPython.kernel.zmq.kernelapp import IPKernelApp
     IPKernelApp.launch_instance(kernel_class=ScilabKernel)
