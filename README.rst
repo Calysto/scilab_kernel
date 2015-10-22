@@ -1,13 +1,13 @@
-A simple IPython kernel for Scilab
+A Jupyter kernel for Scilab
 
-This requires IPython 3+ and `scilab2py <http://pypi.python.org/pypi/scilab2py>`_.
+Install as `pip install scilab_kernel`.
 
-To test it, install with ``setup.py``, then::
+See the installation instructions for `scilab2py <http://blink1073.github.io/scilab2py/source/installation.html#scilab-path-installation>`_ and `Jupyter Notebook <http://jupyter.readthedocs.org/en/latest/install.html>`_.
 
-    ipython qtconsole --kernel scilab
+You should have a `Scilab` entry under "New" on the Jupyter Notebook dashboard.
 
 It supports command history, the ``?`` help magic and calltips,
 plotting, and completion.  You can toggle inline plotting using ``%inline``.
 
-For details of how this works, see IPython's docs on `wrapper kernels
-<http://ipython.org/ipython-doc/dev/development/wrapperkernels.html>`_.
+For details of how this works, see Jupyters's docs on `wrapper kernels
+<http://jupyter-client.readthedocs.org/en/latest/wrapperkernels.html>`_.
