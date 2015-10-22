@@ -17,7 +17,6 @@ clean:
 release: clean
 	pip install wheel
 	python setup.py register
-	python setup.py bdist_wheel upload
 	python setup.py sdist --formats=gztar,zip upload
 	git tag v$(VERSION)
 	git push origin --all
