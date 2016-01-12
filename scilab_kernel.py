@@ -19,7 +19,7 @@ import base64
 from shutil import rmtree
 from xml.dom import minidom
 
-__version__ = '0.5.2'
+__version__ = '0.5.4'
 
 version_pat = re.compile(r'version "(\d+(\.\d+)+)')
 
@@ -87,7 +87,7 @@ class ScilabKernel(Kernel):
         self.max_hist_cache = 1000
         self.hist_cache = []
 
-        self.inline = False
+        self.inline = True
         self.plot_format = 'png' if not os.name == 'nt' else 'svg'
         self.plot_size = '640,480'
         p = self.inline_parser = OptionParser()
