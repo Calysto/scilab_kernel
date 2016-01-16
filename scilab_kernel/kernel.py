@@ -19,7 +19,7 @@ import base64
 from shutil import rmtree
 from xml.dom import minidom
 
-__version__ = '0.5.4'
+from . import __version__
 
 version_pat = re.compile(r'version "(\d+(\.\d+)+)')
 

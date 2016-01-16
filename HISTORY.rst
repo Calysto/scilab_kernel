@@ -3,6 +3,11 @@
 Release History
 ---------------
 
+0.6 (2016-01-16)
+++++++++++++++++
+- Switch to 2-step installation.
+
+
 0.4 (2014-10-19)
 ++++++++++++++++
 - Update for compatibility with Scilab2py 0.5

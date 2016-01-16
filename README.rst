@@ -1,6 +1,18 @@
 A Jupyter kernel for Scilab
 
-Install as `pip install scilab_kernel`.
+To install::
+
+    pip install scilab_kernel
+    python -m scilab_kernel.install
+
+To use it, run one of:
+
+.. code:: shell
+
+    ipython notebook
+    # In the notebook interface, select Scilab from the 'New' menu
+    ipython qtconsole --kernel scilab
+    ipython console --kernel scilab
 
 See the installation instructions for `scilab2py <http://blink1073.github.io/scilab2py/source/installation.html>`_ and `Jupyter Notebook <http://jupyter.readthedocs.org/en/latest/install.html>`_, which are dependencies.
 
