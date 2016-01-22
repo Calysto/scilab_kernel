@@ -1,522 +1,235 @@
-try:
-    from ipykernel.kernelbase import Kernel
-    from IPython.paths import locate_profile
-except ImportError:
-    from IPython.kernel.zmq.kernelbase import Kernel
-    from IPython.utils.path import locate_profile
-from IPython.core.oinspect import Inspector, cast_unicode
-from scilab2py import Scilab2PyError, scilab
+from __future__ import print_function
 
-import os
-import signal
-from subprocess import check_output, CalledProcessError
-import re
-import logging
-from optparse import OptionParser
-from glob import glob
-import tempfile
-import base64
-from shutil import rmtree
+from metakernel import MetaKernel, ProcessMetaKernel, REPLWrapper, u
+from metakernel.pexpect import which
+from IPython.display import Image, SVG
+import subprocess
 from xml.dom import minidom
+import os
+import tempfile
+
 
 from . import __version__
 
-version_pat = re.compile(r'version "(\d+(\.\d+)+)')
 
-
-class ScilabKernel(Kernel):
-    implementation = 'scilab_kernel'
-    implementation_version = __version__
+class ScilabKernel(ProcessMetaKernel):
+    implementation = 'Scilab Kernel'
+    implementation_version = __version__,
     language = 'scilab'
+    language_version = __version__,
+    banner = "Scilab Kernel",
+    language_info = {
+        'name': 'scilab',
+        'file_extension': '.sci',
+        "codemirror_mode": "Octave",
+        "version": __version__,
+        'help_links': MetaKernel.help_links,
+    }
 
-    @property
-    def language_version(self):
-        self.log.info(self.banner)
-        m = version_pat.search(self.banner)
-        return m.group(1)
+    _setup = """
+    try
+      getd(".");
+    catch
+    end
+    """
+
+    _first = True
 
     _banner = None
+
+    _executable = None
+
+    @property
+    def executable(self):
+        if self._executable:
+            return self._executable
+        executable = os.environ.get('SCILAB_EXECUTABLE', None)
+        if not executable or not which(executable):
+            if os.name == 'nt':
+                executable = 'Scilex'
+            else:
+                executable = 'scilab'
+            if not which(executable):
+                msg = ('Scilab Executable not found, please add to path or set'
+                       '"SCILAB_EXECUTABLE" environment variable')
+                raise OSError(msg)
+        self._executable = executable
+        return executable
 
     @property
     def banner(self):
         if self._banner is None:
-            if os.name == 'nt':
-                prog = 'Scilex'
-            else:
-                prog = 'scilab'
-
-            try:
-                banner = check_output([prog, '-version'])
-                banner = banner.decode('utf-8')
-            except CalledProcessError as e:
-                banner = e.output.decode('utf-8')
-            self._banner = banner
+            call = '%s -version; true' % self.executable
+            banner = subprocess.check_output(call, shell=True)
+            self._banner = banner.decode('utf-8')
         return self._banner
 
-    def __init__(self, **kwargs):
-        Kernel.__init__(self, **kwargs)
-
-        self.log.setLevel(logging.INFO)
-
-        # Signal handlers are inherited by forked processes,
-        # and we can't easily reset it from the subprocess.
-        # Since kernelapp ignores SIGINT except in message handlers,
-        # we need to temporarily reset the SIGINT handler here
-        # so that octave and its children are interruptible.
-        sig = signal.signal(signal.SIGINT, signal.SIG_DFL)
-        try:
-            self.scilab_wrapper = scilab
-            scilab.restart()
-            # start scilab and override gettext function
-            self.log.info('starting up')
-            self.eval('_temp = 1;')
-            self.log.info('started')
-        finally:
-            signal.signal(signal.SIGINT, sig)
-
-        try:
-            self.hist_file = os.path.join(locate_profile(),
-                                          'scilab_kernel.hist')
-        except IOError:
-            self.hist_file = None
-            self.log.warn('No default profile found, history unavailable')
-
-        self.inspector = Inspector()
-        self.inspector.set_active_scheme("Linux")
-
-        self.max_hist_cache = 1000
-        self.hist_cache = []
-
-        self.inline = True
-        self.plot_format = 'png' if not os.name == 'nt' else 'svg'
-        self.plot_size = '640,480'
-        p = self.inline_parser = OptionParser()
-        p.add_option(
-            '-f', '--format', action='store', help='Plot format (png, svg or jpg).')
-        p.add_option('-s', '--size', action='store',
-                     help='Pixel size of plots, "width,height". Default is "-s 400,250".')
-
-    def do_execute(self, code, silent, store_history=True,
-                   user_expressions=None, allow_stdin=False):
-        """Execute a line of code in Octave."""
-
-        code = code.strip()
-        abort_msg = {'status': 'abort',
-                     'execution_count': self.execution_count}
-
-        if code and store_history:
-            self.hist_cache.append(code)
-
-        if not code or code == 'keyboard' or code.startswith('keyboard('):
-            return {'status': 'ok', 'execution_count': self.execution_count,
-                    'payload': [], 'user_expressions': {}}
-
-        elif (code == 'exit' or code.startswith('exit(')
-                or code == 'quit' or code.startswith('quit(')):
-            # TODO: exit gracefully here
-            self.do_shutdown(False)
-            return abort_msg
-
-        elif code in ['restart', '%restart'] or code.startswith('restart('):
-            self.scilab_wrapper.restart()
-            return abort_msg
-
-        elif code.endswith('?') or code.startswith('?'):
-            self._get_help(code)
-            return abort_msg
-
-        elif code.startswith('%inline'):
-            self._handle_inline(code)
-            return abort_msg
-
-        plot_width, plot_height = [int(s) for s in self.plot_size.split(',')]
-        if self.inline:
-            self.plot_dir = tempfile.mkdtemp()
-            self.log.info(self.plot_dir)
-        else:
-            self.plot_dir = None
-
-        try:
-            output = self.eval(code, plot_dir=self.plot_dir,
-                               plot_format=self.plot_format,
-                               plot_width=plot_width, plot_height=plot_height)
-
-        except Scilab2PyError as e:
-            return self._handle_error(str(e))
-
-        if not silent:
-            stream_content = {'name': 'stdout', 'text': output}
-            self.send_response(self.iopub_socket, 'stream', stream_content)
-
-            if self.inline:
-                self._handle_figures()
-
-        if output == 'Octave Session Interrupted':
-            return abort_msg
-
-        return {'status': 'ok', 'execution_count': self.execution_count,
-                'payload': [], 'user_expressions': {}}
-
-    def do_complete(self, code, cursor_pos):
-        """Get code completions using Scilab's ``completions``"""
-
-        code = code[:cursor_pos]
-        default = {'matches': [], 'cursor_start': 0,
-                   'cursor_end': cursor_pos, 'metadata': dict(),
-                   'status': 'ok'}
-
-        if code[-1] == ' ':
-            return default
-
-        tokens = code.replace(';', ' ').split()
-        if not tokens:
-            return default
-        token = tokens[-1]
-
-        start = cursor_pos - len(token)
-        cmd = 'completion("%s")' % token
-        output = self.eval(cmd)
-
-        matches = []
-
-        if not output is None:
-            matches = output.replace('!', ' ').split()
-            for item in dir(self.scilab_wrapper):
-                if item.startswith(token) and not item in matches:
-                    matches.append(item)
-
-        matches.extend(_complete_path(token))
-
-        return {'matches': matches, 'cursor_start': start,
-                'cursor_end': cursor_pos, 'metadata': dict(),
-                'status': 'ok'}
-
-    def do_inspect(self, code, cursor_pos, detail_level=0):
-        """If the code ends with a (, try to return a calltip docstring"""
-        default = {'status': 'aborted', 'data': dict(), 'metadata': dict()}
-        if (not code or not len(code) >= cursor_pos or
-                not code[cursor_pos - 1] == '('):
-            return default
-
-        else:
-            token = code[:cursor_pos - 1].replace(';', '').split()[-1]
-            info = self._get_scilab_info(token, detail_level)
-            docstring = info['docstring']
-
-        if docstring:
-            data = {'text/plain': docstring}
-            return {'status': 'ok', 'data': data, 'metadata': dict()}
-
-        return default
-
-    def do_history(self, hist_access_type, output, raw, session=None,
-                   start=None, stop=None, n=None, pattern=None, unique=False):
-        """Access history at startup.
+    def makeWrapper(self):
+        """Start a Scilab process and return a :class:`REPLWrapper` object.
         """
-        if not self.hist_file:
-            return {'history': []}
+        if os.name == 'nt':
+            orig_prompt = u(chr(3))
+            prompt_cmd = u('disp(char(3))')
+            change_prompt = None
+        else:
+            orig_prompt = u('-->')
+            prompt_cmd = None
+            change_prompt = None
 
-        if not os.path.exists(self.hist_file):
-            with open(self.hist_file, 'wb') as fid:
-                fid.write(''.encode('utf-8'))
+        self._first = True
 
-        with open(self.hist_file, 'rb') as fid:
-            history = fid.readlines()
+        executable = self.executable + ' -nw'
+        wrapper = REPLWrapper(executable, orig_prompt, change_prompt,
+                prompt_emit_cmd=prompt_cmd)
+        wrapper.child.linesep = '\n'
+        return wrapper
 
-        history = history[-self.max_hist_cache:]
-        history = [h.decode('utf-8') for h in history]
-        self.hist_cache = history
-        self.log.info('**HISTORY:')
-        self.log.info(self.hist_file)
-        self.log.info(history[-10:])
-        history = [(None, None, h) for h in history]
+    def _do_execute_direct(self, code):
+        'disp(char(2));' + code
+        resp = super(ScilabKernel, self).do_execute_direct(code)
+        resp = [line for line in str(resp).splitlines()
+                if not line.startswith(chr(27))]
+        return '\n'.join(resp)
 
-        return {'history': history}
+    def Print(self, text):
+        text = [line.strip() for line in str(text).splitlines()
+                if (not line.startswith(chr(27)))]
+        text = '\n'.join(text)
+        if text:
+            super(ScilabKernel, self).Print(text)
+
+    def do_execute_direct(self, code):
+        if self._first:
+            self._first = False
+            self.handle_plot_settings()
+            self._do_execute_direct(self._setup)
+
+        self._skipping = os.name != 'nt'
+        super(ScilabKernel, self).do_execute_direct(code, self.Print)
+        if self.plot_settings.get('backend', None) == 'inline':
+            plot_dir = tempfile.mkdtemp()
+            self._make_figs(plot_dir)
+            width, height = 0, 0
+            for fname in os.listdir(plot_dir):
+                filename = os.path.join(plot_dir, fname)
+                try:
+                    if fname.lower().endswith('.svg'):
+                        im = SVG(filename)
+                        if ',' in self.plot_settings['size']:
+                            size = self.plot_settings['size']
+                            width, height = size.split(',')
+                            width, height = int(width), int(height)
+                            im.data = self._fix_svg_size(im.data,
+                                size=(width, height))
+                    else:
+                        im = Image(filename)
+                    self.Display(im)
+                except Exception as e:
+                    self.Error(e)
+
+    def get_kernel_help_on(self, info, level=0, none_on_fail=False):
+        obj = info.get('help_obj', '')
+        if not obj or len(obj.split()) > 1:
+            if none_on_fail:
+                return None
+            else:
+                return ""
+        self._do_execute_direct('help %s' % obj)
 
     def do_shutdown(self, restart):
-        """Shut down the app gracefully, saving history.
+        self.wrapper.sendline('quit')
+        super(ScilabKernel, self).do_shutdown(restart)
+
+    def get_completions(self, info):
         """
-        self.log.info("**Shutting down")
-
-        if restart:
-            self.scilab_wrapper.restart()
-
-        else:
-            self.scilab_wrapper.exit()
-
-        if self.hist_file:
-            with open(self.hist_file, 'wb') as fid:
-                msg = '\n'.join(self.hist_cache[-self.max_hist_cache:])
-                fid.write(msg.encode('utf-8'))
-
-        return {'status': 'ok', 'restart': restart}
-
-    def eval(self, code, *args, **kwargs):
-        output = ''
-
-        try:
-            output = self.scilab_wrapper.eval(str(code), *args, **kwargs)
-
-        except KeyboardInterrupt:
-            self.scilab_wrapper._session.proc.send_signal(signal.SIGINT)
-            output = 'Octave Session Interrupted'
-
-        except Scilab2PyError as e:
-            raise Scilab2PyError(str(e))
-
-        except Exception as e:
-            self.log.error(e)
-            self.scilab_wrapper.restart()
-            output = 'Uncaught Exception, Restarting Octave'
-
-        if output is None:
-            output = ''
-        output = str(output)
-
-        return output
-
-    def _handle_figures(self):
-
-        plot_dir = self.plot_dir
-        plot_format = self.plot_format
-
-        width, height = [int(s) for s in self.plot_size.split(',')]
-
-        _mimetypes = {'png': 'image/png',
-                      'svg': 'image/svg+xml',
-                      'jpg': 'image/jpeg',
-                      'jpeg': 'image/jpeg'}
-
-        images = []
-        for imgfile in glob("%s/*" % plot_dir):
-            with open(imgfile, 'rb') as fid:
-                images.append(fid.read())
-        rmtree(plot_dir)
-
-        plot_mime_type = _mimetypes.get(plot_format, 'image/png')
-
-        for image in images:
-            if plot_format == 'svg':
-                image = _fix_svg_size(image, size=(width, height))
-            else:
-                image = base64.b64encode(image).decode('ascii')
-            data = {plot_mime_type: image}
-            metadata = {plot_mime_type: {'width': width, 'height': height}}
-
-            self.log.info('Sending a plot')
-            stream_content = {'source': 'octave_kernel', 'data': data,
-                              'metadata': metadata}
-            self.send_response(self.iopub_socket, 'display_data',
-                               stream_content)
-
-    def _get_help(self, code):
-        if code.startswith('??') or code.endswith('??'):
-            detail_level = 1
-        else:
-            detail_level = 0
-
-        code = code.replace('?', '')
-        tokens = code.replace(';', ' ').split()
-        if not tokens:
+        Get completions from kernel based on info dict.
+        """
+        cmd = 'completion("%s")' % info['obj']
+        output = self._do_execute_direct(cmd)
+        if not output:
             return
-        token = tokens[-1]
+        output = output.replace('!', '')
+        return [line.strip() for line in output.splitlines()
+                if info['obj'] in line]
 
-        try:
-            info = self._get_scilab_info(token, detail_level)
-        except Exception as e:
-            self.log.error(e)
-            return
+    def handle_plot_settings(self):
+        """Handle the current plot settings"""
+        settings = self.plot_settings
+        if settings.get('format', None) is None:
+            settings.clear()
+        settings.setdefault('backend', 'inline')
+        settings.setdefault('format', 'svg')
+        settings.setdefault('size', '560,420')
 
-        if 'built-in Scilab function.' in info['docstring']:
-            self.scilab_wrapper.help(token)
+        cmds = []
 
-            output = 'Calling Help Browser for `%s`' % token
-            stream_content = {'name': 'stdout', 'data': output}
-            self.send_response(self.iopub_socket, 'stream', stream_content)
+        self._plot_fmt = settings['format']
 
-        elif info['docstring']:
-            output = _get_printable_info(self.inspector, info, detail_level)
-            stream_content = {'name': 'stdout', 'data': output}
-            self.send_response(self.iopub_socket, 'stream', stream_content)
+        cmds.append('h = gdf();')
+        cmds.append('h.figure_position = [0, 0];')
 
-    def _handle_error(self, err):
-        if 'parse error:' in err:
-            err = 'Parse Error'
-
-        elif 'Scilab returned:' in err:
-            err = err[err.index('Scilab returned:'):]
-            err = err[len('Scilab returned:'):].lstrip()
-
-        elif 'Syntax Error' in err:
-            err = 'Syntax Error'
-
-        stream_content = {'name': 'stdout', 'data': err.strip()}
-        self.send_response(self.iopub_socket, 'stream', stream_content)
-
-        return {'status': 'error', 'execution_count': self.execution_count,
-                'ename': '', 'evalue': err, 'traceback': []}
-
-    def _handle_inline(self, code):
-        if len(code.split()) == 1:
-            self.inline = not self.inline
-        else:
-            self.inline = True
-        if not self.inline:
-            self.plot_size = '620,590'
-
-        args, name = self.inline_parser.parse_args(code.split())
-        self.plot_format = args.format or self.plot_format
-        self.plot_size = args.size or self.plot_size
-
-        state = "OFF" if not self.inline else "ON"
-        output = "Inline plotting is %s" % state
-        stream_content = {'name': 'stdout', 'data': output}
-        self.send_response(self.iopub_socket, 'stream', stream_content)
-
-    def _get_scilab_info(self, obj, detail_level):
-        info = dict(argspec=None, base_class=None, call_def=None,
-                    call_docstring=None, class_docstring=None,
-                    definition=None, docstring='', file=None,
-                    found=False, init_definition=None,
-                    init_docstring=None, isalias=0, isclass=None,
-                    ismagic=0, length=None, name='', namespace=None,
-                    source=None, string_form=None, type_name='')
-
-        sci = self.scilab_wrapper
-
-        if obj in dir(sci):
-            obj = getattr(sci, obj)
-            return self.inspector.info(obj, detail_level=detail_level)
-
-        exist = self.eval('exists("%s");' % obj)
-        if exist == 0 or exist is None:
-            return info
-
-        typeof = self.eval('typeof(%s);' % obj) or 'Error'
-        lookup = dict(st="structure array", ce="cell array",
-                      fptr="built-in Scilab function")
-        typeof = lookup.get(typeof, typeof)
-
-        var = None
-
-        if typeof in ['function', 'built-in Scilab function']:
-            docstring = getattr(sci, obj).__doc__
-
-        else:
-            docstring = 'A %s' % typeof
+        width, height = 560, 420
+        if isinstance(settings['size'], tuple):
+            width, height = settings['size']
+        elif settings['size']:
             try:
-                var = sci.pull(obj)
-            except Scilab2PyError:
-                pass
+                width, height = settings['size'].split(',')
+                width, height = int(width), int(height)
+            except Exception as e:
+                self.Error('Error setting plot settings: %s' % e)
 
-        if typeof == 'function':
-            info['definition'] = docstring.strip().splitlines()[0].strip()
-            docstring = '\n'.join(docstring.strip().splitlines()[1:])
+        cmds.append('h.figure_size = [%s,%s];' % (width, height))
+        cmds.append('h.axes_size = [%s * 0.98, %s * 0.8];' % (width, height))
 
-        source = docstring
+        if settings['backend'] == 'inline':
+            cmds.append('h.visible = "off";')
+        else:
+            cmds.append('h.visible = "on";')
+        super(ScilabKernel, self).do_execute_direct('\n'.join(cmds))
 
-        info['found'] = True
-        info['docstring'] = docstring
-        info['type_name'] = typeof.capitalize()
-        info['source'] = source
-        info['string_form'] = obj if var is None else str(var)
+    def _make_figs(self, plot_dir):
+        plot_format = self._plot_fmt
+        cmd = """
+        ids_array=winsid();
+        for i=1:length(ids_array)
+          id=ids_array(i);
+          outfile = sprintf('%(plot_dir)s/__ipy_sci_fig_%%03d', i);
+          if '%(plot_format)s' == 'jpg' then
+            xs2jpg(id, outfile + '.jpg');
+          elseif '%(plot_format)s' == 'jpeg' then
+            xs2jpg(id, outfile + '.jpeg');
+          elseif '%(plot_format)s' == 'png' then
+            xs2png(id, outfile);
+          else
+            xs2svg(id, outfile);
+          end
+          close(get_figure_handle(id));
+        end
+        """ % locals()
+        super(ScilabKernel, self).do_execute_direct(cmd.replace('\n', ''))
 
-        return info
+    def _fix_svg_size(self, image, size=None):
+        """
+        Scilab SVGs do not have height/width attributes.  Set
+        these to be the same as the viewBox, so that the browser
+        scales the image correctly.
 
+        Parameters
+        ----------
+        image : str
+            SVG data.
+        size : tuple of int
+            Image width, height.
 
-def _get_printable_info(inspector, info, detail_level=0):
-    displayfields = []
+        """
+        (svg,) = minidom.parseString(image).getElementsByTagName('svg')
+        viewbox = svg.getAttribute('viewBox').split(' ')
 
-    def add_fields(fields):
-        for title, key in fields:
-            field = info[key]
-            if field is not None:
-                displayfields.append((title, field.rstrip()))
+        if size is not None and size[0] is not None:
+            width, height = size
+        else:
+            width, height = viewbox[2:]
 
-    add_fields(inspector.pinfo_fields1)
-    add_fields(inspector.pinfo_fields2)
-    add_fields(inspector.pinfo_fields3)
-
-    # Source or docstring, depending on detail level and whether
-    # source found.
-    if detail_level > 0 and info['source'] is not None:
-        source = cast_unicode(info['source'])
-        displayfields.append(("Source",  source))
-
-    elif info['docstring'] is not None:
-        displayfields.append(("Docstring", info["docstring"]))
-
-    # Info for objects:
-    else:
-        add_fields(inspector.pinfo_fields_obj)
-
-    # Finally send to printer/pager:
-    if displayfields:
-        return inspector._format_fields(displayfields)
-
-
-
-def _listdir(root):
-    "List directory 'root' appending the path separator to subdirs."
-    res = []
-    for name in os.listdir(root):
-        path = os.path.join(root, name)
-        if os.path.isdir(path):
-            name += os.sep
-        res.append(name)
-    return res
-
-
-def _complete_path(path=None):
-    """Perform completion of filesystem path.
-
-    http://stackoverflow.com/questions/5637124/tab-completion-in-pythons-raw-input
-    """
-    if not path:
-        return _listdir('.')
-    dirname, rest = os.path.split(path)
-    tmp = dirname if dirname else '.'
-    res = [os.path.join(dirname, p)
-           for p in _listdir(tmp) if p.startswith(rest)]
-    # more than one match, or single match which does not exist (typo)
-    if len(res) > 1 or not os.path.exists(path):
-        return res
-    # resolved to a single directory, so return list of files below it
-    if os.path.isdir(path):
-        return [os.path.join(path, p) for p in _listdir(path)]
-    # exact file match terminates this completion
-    return [path + ' ']
-
-
-def _fix_svg_size(image, size=None):
-    """
-    Scliab SVGs do not have height/width attributes.  Set
-    these to be the same as the viewBox, so that the browser
-    scales the image correctly.
-
-    Parameters
-    ----------
-    image : str
-        SVG data.
-    size : tuple of int
-        Image width, height.
-
-    """
-    (svg,) = minidom.parseString(image).getElementsByTagName('svg')
-    viewbox = svg.getAttribute('viewBox').split(' ')
-
-    if size is not None:
-        width, height = size
-    else:
-        width, height = viewbox[2:]
-
-    svg.setAttribute('width', '%dpx' % width)
-    svg.setAttribute('height', '%dpx' % height)
-    return svg.toxml()
-
-if __name__ == '__main__':
-    try:
-        from ipykernel.kernelapp import IPKernelApp
-    except ImportError:
-        from IPython.kernel.zmq.kernelapp import IPKernelApp
-    IPKernelApp.launch_instance(kernel_class=ScilabKernel)
+        svg.setAttribute('width', '%dpx' % int(width))
+        svg.setAttribute('height', '%dpx' % int(height))
+        return svg.toxml()
