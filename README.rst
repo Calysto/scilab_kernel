@@ -21,6 +21,6 @@ which means it features a standard set of magics.
 
 A sample notebook is available online_.
 
-You can specify the path to your Octave executable by creating a `SCILAB_EXECUTABLE` environmental variable.
+You can specify the path to your Scilab executable by creating a `SCILAB_EXECUTABLE` environmental variable.
 
-.. _online: http://nbviewer.ipython.org/github/blink1073/scilab_kernel/blob/master/scilab_kernel.ipynb
+.. _online: http://nbviewer.ipython.org/github/calysto/scilab_kernel/blob/master/scilab_kernel.ipynb
