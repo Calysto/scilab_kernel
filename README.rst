@@ -1,5 +1,7 @@
 A Jupyter kernel for Scilab
 
+This requires `Jupyter Notebook <http://jupyter.readthedocs.org/en/latest/install.html>`_, and `Scilab <http://www.scilab.org/download/latest>`_.
+
 To install::
 
     pip install scilab_kernel
@@ -14,12 +16,11 @@ To use it, run one of:
     ipython qtconsole --kernel scilab
     ipython console --kernel scilab
 
-See the installation instructions for `scilab2py <http://blink1073.github.io/scilab2py/source/installation.html>`_ and `Jupyter Notebook <http://jupyter.readthedocs.org/en/latest/install.html>`_, which are dependencies.
+This is based on `MetaKernel <http://pypi.python.org/pypi/metakernel>`_,
+which means it features a standard set of magics.
 
-You should have a `Scilab` entry under "New" on the Jupyter Notebook dashboard.
+A sample notebook is available online_.
 
-It supports command history, the ``?`` help magic and calltips,
-plotting, and completion.  You can toggle inline plotting using ``%inline``.
+You can specify the path to your Octave executable by creating a `SCILAB_EXECUTABLE` environmental variable.
 
-For details of how this works, see Jupyters's docs on `wrapper kernels
-<http://jupyter-client.readthedocs.org/en/latest/wrapperkernels.html>`_.
+.. _online: http://nbviewer.ipython.org/github/blink1073/scilab_kernel/blob/master/scilab_kernel.ipynb
