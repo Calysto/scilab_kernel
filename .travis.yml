@@ -4,7 +4,7 @@ python:
   - "3.5"
 install:
   # download Scilab and add it to the path
-  - \
+  - |
      if [[ $ENV == python=3.3* ]]; then
       wget http://www.scilab.org/download/5.4.1/scilab-5.4.1.bin.linux-x86_64.tar.gz  -O scilab.tar.gz;
       tar xfz scilab.tar.gz;
