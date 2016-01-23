@@ -188,12 +188,14 @@ class ScilabKernel(ProcessMetaKernel):
         super(ScilabKernel, self).do_execute_direct('\n'.join(cmds))
 
     def _make_figs(self, plot_dir):
+        plot_dir = plot_dir.replace(os.sep, '/')
         plot_format = self._plot_fmt
         cmd = """
         ids_array=winsid();
         for i=1:length(ids_array)
           id=ids_array(i);
           outfile = sprintf('%(plot_dir)s/__ipy_sci_fig_%%03d', i);
+          disp(outfile)
           if '%(plot_format)s' == 'jpg' then
             xs2jpg(id, outfile + '.jpg');
           elseif '%(plot_format)s' == 'jpeg' then
@@ -206,7 +208,7 @@ class ScilabKernel(ProcessMetaKernel):
           close(get_figure_handle(id));
         end
         """ % locals()
-        super(ScilabKernel, self).do_execute_direct(cmd.replace('\n', ''))
+        super(ScilabKernel, self).do_execute_direct(cmd)
 
     def _fix_svg_size(self, image, size=None):
         """
