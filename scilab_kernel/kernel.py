@@ -6,6 +6,7 @@ from IPython.display import Image, SVG
 import subprocess
 from xml.dom import minidom
 import os
+import sys
 import tempfile
 
 
@@ -181,7 +182,7 @@ class ScilabKernel(ProcessMetaKernel):
         cmds.append('h.figure_size = [%s,%s];' % (width, height))
         cmds.append('h.axes_size = [%s * 0.98, %s * 0.8];' % (width, height))
 
-        if settings['backend'] == 'inline':
+        if settings['backend'] == 'inline' and 'linux' not in sys.platform:
             cmds.append('h.visible = "off";')
         else:
             cmds.append('h.visible = "on";')

@@ -3,6 +3,11 @@
 Release History
 ---------------
 
+0.7 (2016-01-23)
+++++++++++++++++
+- Convert to a MetaKernel.
+
+
 0.6 (2016-01-16)
 ++++++++++++++++
 - Switch to 2-step installation.
