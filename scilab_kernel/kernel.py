@@ -22,7 +22,7 @@ class ScilabKernel(ProcessMetaKernel):
     language_info = {
         'name': 'scilab',
         'file_extension': '.sci',
-        "codemirror_mode": "Octave",
+        "mimetype": "text/x-octave",
         "version": __version__,
         'help_links': MetaKernel.help_links,
     }
