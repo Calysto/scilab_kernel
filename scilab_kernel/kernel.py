@@ -156,28 +156,18 @@ class ScilabKernel(ProcessMetaKernel):
     def handle_plot_settings(self):
         """Handle the current plot settings"""
         settings = self.plot_settings
-        if settings.get('format', None) is None:
-            settings.clear()
-        settings.setdefault('backend', 'inline')
+        settings.setdefault('format', 'png')
+        settings.setdefault('width', 560)
+        settings.setdefault('height', 420)
         settings.setdefault('format', 'svg')
-        settings.setdefault('size', '560,420')
 
         cmds = []
 
         self._plot_fmt = settings['format']
+        width, height = settings['width'], settings['height']
 
         cmds.append('h = gdf();')
         cmds.append('h.figure_position = [0, 0];')
-
-        width, height = 560, 420
-        if isinstance(settings['size'], tuple):
-            width, height = settings['size']
-        elif settings['size']:
-            try:
-                width, height = settings['size'].split(',')
-                width, height = int(width), int(height)
-            except Exception as e:
-                self.Error('Error setting plot settings: %s' % e)
 
         cmds.append('h.figure_size = [%s,%s];' % (width, height))
         cmds.append('h.axes_size = [%s * 0.98, %s * 0.8];' % (width, height))
