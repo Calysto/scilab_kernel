@@ -82,6 +82,13 @@ class ScilabKernel(ProcessMetaKernel):
         wrapper.child.linesep = '\r\n' if os.name == 'nt' else '\n'
         return wrapper
 
+    def Print(self, text):
+        text = [line.strip() for line in str(text).splitlines()
+                if (not line.startswith(chr(27)))]
+        text = '\n'.join(text)
+        if text:
+            super(ScilabKernel, self).Print(text)
+
     def do_execute_direct(self, code, silent=False):
         if self._first:
             self._first = False
