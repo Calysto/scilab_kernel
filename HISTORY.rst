@@ -3,6 +3,11 @@
 Release History
 ---------------
 
+0.8 (2017-01-07)
+++++++++++++++++
+- Clean up plot handling and improve robustness.
+
+
 0.7 (2016-01-23)
 ++++++++++++++++
 - Convert to a MetaKernel.
