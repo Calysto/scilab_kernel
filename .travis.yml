@@ -1,6 +1,7 @@
 language: python
 sudo: false
 python:
+  - "2.7"
   - "3.5"
 install:
   # download Scilab and add it to the path
@@ -15,8 +16,8 @@ install:
       export PATH="$PWD/scilab-5.5.1/bin:$PATH";
     fi
   - scilab -version; true
-  - pip install ipykernel jupyter_client traitlets jupyter_kernel_test flit
-  - flit install
+  - pip install ipykernel jupyter_client traitlets jupyter_kernel_test
+  - pip install .
   - python -m scilab_kernel.install
 script:
-  - python test_scilab_kernel.py
+  - make test

@@ -1,0 +1,9 @@
+include *.txt
+include *.rst
+include *.py
+include Makefile
+recursive-include scilab_kernel *.sci
+prune .git
+prune docs/build
+prune dist
+prune build
