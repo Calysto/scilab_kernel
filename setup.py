@@ -7,8 +7,8 @@ MAINTAINER = 'Steven Silvester'
 MAINTAINER_EMAIL = 'steven.silvester@ieee.org'
 URL = 'http://github.com/calsto/scilab_kernel'
 LICENSE = 'MIT'
-REQUIRES = ["metakernel (>=0.17.3)", "jupyter_client", "ipykernel"]
-INSTALL_REQUIRES = ["metakernel >=0.17.3", "jupyter_client", "ipykernel"]
+REQUIRES = ["metakernel (>=0.17.2)", "jupyter_client", "ipykernel"]
+INSTALL_REQUIRES = ["metakernel >=0.17.2", "jupyter_client", "ipykernel"]
 PACKAGES = [DISTNAME]
 PACKAGE_DATA = {DISTNAME: ['*.sci']}
 CLASSIFIERS = """\
