@@ -1,14 +1,15 @@
-from __future__ import print_function
+from __future__ import print_function, absolute_import
 
-from metakernel import MetaKernel, ProcessMetaKernel, REPLWrapper, u
+import codecs
+import os
+import shutil
+import subprocess
+import tempfile
+from xml.dom import minidom
+
+from metakernel import MetaKernel, ProcessMetaKernel, REPLWrapper
 from metakernel.pexpect import which
 from IPython.display import Image, SVG
-import subprocess
-from xml.dom import minidom
-import os
-import sys
-import tempfile
-
 
 from . import __version__
 
@@ -22,17 +23,15 @@ class ScilabKernel(ProcessMetaKernel):
     language_info = {
         'name': 'scilab',
         'file_extension': '.sci',
-        "mimetype": "text/x-octave",
+        "codemirror_mode": "Octave",
         "version": __version__,
         'help_links': MetaKernel.help_links,
     }
 
     _setup = """
-    try
-      getd(".");
-    catch
-    end
-    """
+    try,getd("."),end
+    try,getd("%s"),end
+    """ % os.path.dirname(__file__)
 
     _first = True
 
@@ -60,7 +59,7 @@ class ScilabKernel(ProcessMetaKernel):
     @property
     def banner(self):
         if self._banner is None:
-            call = '%s -version; true' % self.executable
+            call = '%s -version || true' % self.executable
             banner = subprocess.check_output(call, shell=True)
             self._banner = banner.decode('utf-8')
         return self._banner
@@ -68,65 +67,36 @@ class ScilabKernel(ProcessMetaKernel):
     def makeWrapper(self):
         """Start a Scilab process and return a :class:`REPLWrapper` object.
         """
+        orig_prompt = '-->'
+        prompt_cmd = None
+        change_prompt = None
         if os.name == 'nt':
-            orig_prompt = u(chr(3))
-            prompt_cmd = u('disp(char(3))')
-            change_prompt = None
-        else:
-            orig_prompt = u('-->')
-            prompt_cmd = None
-            change_prompt = None
+            orig_prompt = '--> '
+            prompt_cmd = 'printf("-->")'
 
         self._first = True
 
         executable = self.executable + ' -nw'
         wrapper = REPLWrapper(executable, orig_prompt, change_prompt,
-                prompt_emit_cmd=prompt_cmd)
-        wrapper.child.linesep = '\n'
+            prompt_emit_cmd=prompt_cmd)
+        wrapper.child.linesep = '\r\n' if os.name == 'nt' else '\n'
         return wrapper
 
-    def _do_execute_direct(self, code):
-        'disp(char(2));' + code
-        resp = super(ScilabKernel, self).do_execute_direct(code)
-        resp = [line for line in str(resp).splitlines()
-                if not line.startswith(chr(27))]
-        return '\n'.join(resp)
-
-    def Print(self, text):
-        text = [line.strip() for line in str(text).splitlines()
-                if (not line.startswith(chr(27)))]
-        text = '\n'.join(text)
-        if text:
-            super(ScilabKernel, self).Print(text)
-
-    def do_execute_direct(self, code):
+    def do_execute_direct(self, code, silent=False):
         if self._first:
             self._first = False
             self.handle_plot_settings()
-            self._do_execute_direct(self._setup)
+            setup = self._setup.strip()
+            self.do_execute_direct(setup, True)
 
-        self._skipping = os.name != 'nt'
-        super(ScilabKernel, self).do_execute_direct(code, self.Print)
+        resp = super(ScilabKernel, self).do_execute_direct(code, silent=silent)
+        if silent:
+            return resp
         if self.plot_settings.get('backend', None) == 'inline':
-            plot_dir = tempfile.mkdtemp()
-            self._make_figs(plot_dir)
-            width, height = 0, 0
-            for fname in os.listdir(plot_dir):
-                filename = os.path.join(plot_dir, fname)
-                try:
-                    if fname.lower().endswith('.svg'):
-                        im = SVG(filename)
-                        if ',' in self.plot_settings['size']:
-                            size = self.plot_settings['size']
-                            width, height = size.split(',')
-                            width, height = int(width), int(height)
-                            im.data = self._fix_svg_size(im.data,
-                                size=(width, height))
-                    else:
-                        im = Image(filename)
-                    self.Display(im)
-                except Exception as e:
-                    self.Error(e)
+            plot_dir = self.make_figures()
+            for image in self.extract_figures(plot_dir):
+                self.Display(image)
+            shutil.rmtree(plot_dir, True)
 
     def get_kernel_help_on(self, info, level=0, none_on_fail=False):
         obj = info.get('help_obj', '')
@@ -135,7 +105,7 @@ class ScilabKernel(ProcessMetaKernel):
                 return None
             else:
                 return ""
-        self._do_execute_direct('help %s' % obj)
+        self.do_execute_direct('help %s' % obj, True)
 
     def do_shutdown(self, restart):
         self.wrapper.sendline('quit')
@@ -146,83 +116,130 @@ class ScilabKernel(ProcessMetaKernel):
         Get completions from kernel based on info dict.
         """
         cmd = 'completion("%s")' % info['obj']
-        output = self._do_execute_direct(cmd)
+        output = self.do_execute_direct(cmd, True)
         if not output:
-            return
-        output = output.replace('!', '')
+            return []
+        output = output.output.replace('!', '')
         return [line.strip() for line in output.splitlines()
                 if info['obj'] in line]
 
     def handle_plot_settings(self):
         """Handle the current plot settings"""
         settings = self.plot_settings
-        settings.setdefault('format', 'png')
-        settings.setdefault('width', 560)
-        settings.setdefault('height', 420)
+        settings.setdefault('backend', 'inline')
         settings.setdefault('format', 'svg')
+        settings.setdefault('size', '560,420')
 
         cmds = []
 
         self._plot_fmt = settings['format']
-        width, height = settings['width'], settings['height']
 
         cmds.append('h = gdf();')
         cmds.append('h.figure_position = [0, 0];')
 
+        width, height = 560, 420
+        if isinstance(settings['size'], tuple):
+            width, height = settings['size']
+        elif settings['size']:
+            try:
+                width, height = settings['size'].split(',')
+                width, height = int(width), int(height)
+            except Exception as e:
+                self.Error('Error setting plot settings: %s' % e)
+
         cmds.append('h.figure_size = [%s,%s];' % (width, height))
         cmds.append('h.axes_size = [%s * 0.98, %s * 0.8];' % (width, height))
 
-        if settings['backend'] == 'inline' and 'linux' not in sys.platform:
+        if settings['backend'] == 'inline':
             cmds.append('h.visible = "off";')
         else:
             cmds.append('h.visible = "on";')
-        super(ScilabKernel, self).do_execute_direct('\n'.join(cmds))
+        super(ScilabKernel, self).do_execute_direct('\n'.join(cmds), True)
 
-    def _make_figs(self, plot_dir):
-        plot_dir = plot_dir.replace(os.sep, '/')
-        plot_format = self._plot_fmt
-        cmd = """
-        ids_array=winsid();
-        for i=1:length(ids_array)
-          id=ids_array(i);
-          outfile = sprintf('%(plot_dir)s/__ipy_sci_fig_%%03d', i);
-          disp(outfile)
-          if '%(plot_format)s' == 'jpg' then
-            xs2jpg(id, outfile + '.jpg');
-          elseif '%(plot_format)s' == 'jpeg' then
-            xs2jpg(id, outfile + '.jpeg');
-          elseif '%(plot_format)s' == 'png' then
-            xs2png(id, outfile);
-          else
-            xs2svg(id, outfile);
-          end
-          close(get_figure_handle(id));
-        end
-        """ % locals()
-        super(ScilabKernel, self).do_execute_direct(cmd)
-
-    def _fix_svg_size(self, image, size=None):
-        """
-        Scilab SVGs do not have height/width attributes.  Set
-        these to be the same as the viewBox, so that the browser
-        scales the image correctly.
+    def make_figures(self, plot_dir=None):
+        """Create figures for the current figures.
 
         Parameters
         ----------
-        image : str
-            SVG data.
-        size : tuple of int
-            Image width, height.
+        plot_dir: str, optional
+            The directory in which to create the plots.
 
+        Returns
+        -------
+        out: str
+            The plot directory containing the files.
         """
-        (svg,) = minidom.parseString(image).getElementsByTagName('svg')
+        plot_dir = plot_dir or tempfile.mkdtemp()
+        plot_format = self._plot_fmt.lower()
+        make_figs = '_make_figures("%s", "%s");'
+        make_figs = make_figs % (plot_dir, plot_format)
+        super(ScilabKernel, self).do_execute_direct(make_figs, True)
+        return plot_dir
+
+    def extract_figures(self, plot_dir):
+        """Get a list of IPython Image objects for the created figures.
+
+        Parameters
+        ----------
+        plot_dir: str
+            The directory in which to create the plots.
+        """
+        images = []
+        for fname in reversed(os.listdir(plot_dir)):
+            filename = os.path.join(plot_dir, fname)
+            try:
+                if fname.lower().endswith('.svg'):
+                    im = self._handle_svg(filename)
+                else:
+                    im = Image(filename)
+                images.append(im)
+            except Exception as e:
+                if self.error_handler:
+                    self.error_handler(e)
+                else:
+                    raise e
+        return images
+
+    def _handle_svg(self, filename):
+        """
+        Handle special considerations for SVG images.
+        """
+        # Gnuplot can create invalid characters in SVG files.
+        with codecs.open(filename, 'r', encoding='utf-8',
+                         errors='replace') as fid:
+            data = fid.read()
+        im = SVG(data=data)
+        try:
+            im.data = self._fix_svg_size(im.data)
+        except Exception:
+            pass
+        return im
+
+    def _fix_svg_size(self, data):
+        """GnuPlot SVGs do not have height/width attributes.  Set
+        these to be the same as the viewBox, so that the browser
+        scales the image correctly.
+        """
+        # Minidom does not support parseUnicode, so it must be decoded
+        # to accept unicode characters
+        parsed = minidom.parseString(data.encode('utf-8'))
+        (svg,) = parsed.getElementsByTagName('svg')
+
         viewbox = svg.getAttribute('viewBox').split(' ')
+        width, height = viewbox[2:]
+        width, height = int(width), int(height)
 
-        if size is not None and size[0] is not None:
-            width, height = size
-        else:
-            width, height = viewbox[2:]
+        # Handle overrides in case they were not encoded.
+        settings = self.plot_settings
+        if settings['width'] != -1:
+            if settings['height'] == -1:
+                height = height * settings['width'] / width
+            width = settings['width']
+        if settings['height'] != -1:
+            if settings['width'] == -1:
+                width = width * settings['height'] / height
+            height = settings['height']
 
-        svg.setAttribute('width', '%dpx' % int(width))
-        svg.setAttribute('height', '%dpx' % int(height))
+        svg.setAttribute('width', '%dpx' % width)
+        svg.setAttribute('height', '%dpx' % height)
         return svg.toxml()

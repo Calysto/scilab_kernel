@@ -11,6 +11,11 @@ class ScilabKernelTests(jkt.KernelTests):
 
     code_hello_world = "disp('hello, world')"
 
+    code_display_data = [
+        {'code': '%plot -f png\nplot([1,2,3])', 'mime': 'image/png'},
+        {'code': '%plot -f svg\nplot([1,2,3])', 'mime': 'image/svg+xml'}
+    ]
+
     completion_samples = [
         {
             'text': 'one',
@@ -20,3 +25,4 @@ class ScilabKernelTests(jkt.KernelTests):
 
 if __name__ == '__main__':
     unittest.main()
+
