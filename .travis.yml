@@ -3,21 +3,17 @@ sudo: false
 python:
   - "2.7"
   - "3.5"
+  - "3.6"
 install:
   # download Scilab and add it to the path
-  - |
-    if [[ $ENV == python=3.3* ]]; then
-      wget http://www.scilab.org/download/5.4.1/scilab-5.4.1.bin.linux-x86_64.tar.gz  -O scilab.tar.gz;
-      tar xfz scilab.tar.gz;
-      export PATH="$PWD/scilab-5.4.1/bin:$PATH";
-    else
-      wget http://www.scilab.org/download/5.5.1/scilab-5.5.1.bin.linux-x86_64.tar.gz -O scilab.tar.gz;
-      tar xfz scilab.tar.gz;
-      export PATH="$PWD/scilab-5.5.1/bin:$PATH";
-    fi
+  - if [[ $TRAVIS_PYTHON_VERSION == '2.7' ]] then export SCILAB=5.4.1; fi
+  - if [[ $TRAVIS_PYTHON_VERSION == '3.5' ]] then export SCILAB=5.5.1; fi
+  - if [[ $TRAVIS_PYTHON_VERSION == '3.6' ]] then export SCILAB=6.6.0; fi
+  - wget http://www.scilab.org/download/$SCILAB/scilab-$SCILAB.bin.linux-x86_64.tar.gz  -O scilab.tar.gz;
+  - tar xfz scilab.tar.gz;
+  - export PATH="$PWD/scilab-$SCILAB/bin:$PATH";
   - scilab -version; true
-  - pip install ipykernel jupyter_client traitlets jupyter_kernel_test
   - pip install .
-  - python -m scilab_kernel.install
 script:
   - make test
+  - python -m scilab_kernel install --user
