@@ -78,7 +78,7 @@ class ScilabKernel(ProcessMetaKernel):
 
         executable = self.executable + ' -nw'
         wrapper = REPLWrapper(executable, orig_prompt, change_prompt,
-            prompt_emit_cmd=prompt_cmd)
+            prompt_emit_cmd=prompt_cmd, echo=True)
         wrapper.child.linesep = '\r\n' if os.name == 'nt' else '\n'
         return wrapper
 
