@@ -2,6 +2,8 @@ include *.txt
 include *.rst
 include *.py
 include Makefile
+include scilab_kernel/kernel.json
+recursive-include scilab_kernel *.png
 recursive-include scilab_kernel *.sci
 prune .git
 prune docs/build

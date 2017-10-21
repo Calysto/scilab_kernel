@@ -1,9 +1,11 @@
 from __future__ import print_function, absolute_import
 
 import codecs
+import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from xml.dom import minidom
 
@@ -12,6 +14,16 @@ from metakernel.pexpect import which
 from IPython.display import Image, SVG
 
 from . import __version__
+
+
+def get_kernel_json():
+    """Get the kernel json for the kernel.
+    """
+    here = os.path.dirname(__file__)
+    with open(os.path.join(here, 'kernel.json')) as fid:
+        data = json.load(fid)
+    data['argv'][0] = sys.executable
+    return data
 
 
 class ScilabKernel(ProcessMetaKernel):
@@ -23,10 +35,11 @@ class ScilabKernel(ProcessMetaKernel):
     language_info = {
         'name': 'scilab',
         'file_extension': '.sci',
-        "codemirror_mode": "Octave",
+        "mimetype": "text/x-octave",
         "version": __version__,
         'help_links': MetaKernel.help_links,
     }
+    kernel_json = get_kernel_json()
 
     _setup = """
     try,getd("."),end
@@ -70,6 +83,7 @@ class ScilabKernel(ProcessMetaKernel):
         orig_prompt = '-->'
         prompt_cmd = None
         change_prompt = None
+        continuation_prompt = '  >'
         if os.name == 'nt':
             orig_prompt = '--> '
             prompt_cmd = 'printf("-->")'
@@ -78,7 +92,8 @@ class ScilabKernel(ProcessMetaKernel):
 
         executable = self.executable + ' -nw'
         wrapper = REPLWrapper(executable, orig_prompt, change_prompt,
-            prompt_emit_cmd=prompt_cmd, echo=True)
+            prompt_emit_cmd=prompt_cmd, echo=True,
+            continuation_prompt_regex=continuation_prompt)
         wrapper.child.linesep = '\r\n' if os.name == 'nt' else '\n'
         return wrapper
 
