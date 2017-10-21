@@ -83,6 +83,7 @@ class ScilabKernel(ProcessMetaKernel):
         orig_prompt = '-->'
         prompt_cmd = None
         change_prompt = None
+        continuation_prompt = '  >'
         if os.name == 'nt':
             orig_prompt = '--> '
             prompt_cmd = 'printf("-->")'
@@ -91,7 +92,8 @@ class ScilabKernel(ProcessMetaKernel):
 
         executable = self.executable + ' -nw'
         wrapper = REPLWrapper(executable, orig_prompt, change_prompt,
-            prompt_emit_cmd=prompt_cmd, echo=True)
+            prompt_emit_cmd=prompt_cmd, echo=True,
+            continuation_prompt_regex=continuation_prompt)
         wrapper.child.linesep = '\r\n' if os.name == 'nt' else '\n'
         return wrapper
 
