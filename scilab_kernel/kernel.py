@@ -59,7 +59,7 @@ class ScilabKernel(ProcessMetaKernel):
         executable = os.environ.get('SCILAB_EXECUTABLE', None)
         if not executable or not which(executable):
             if os.name == 'nt':
-                executable = 'Scilex'
+                executable = 'WScilex'
             else:
                 executable = 'scilab'
             if not which(executable):
@@ -84,15 +84,15 @@ class ScilabKernel(ProcessMetaKernel):
         prompt_cmd = None
         change_prompt = None
         continuation_prompt = '  >'
-        if os.name == 'nt':
-            orig_prompt = '--> '
-            prompt_cmd = 'printf("-->")'
-
         self._first = True
-
-        executable = self.executable + ' -nw'
+        if os.name == 'nt':
+            prompt_cmd = 'printf("-->")'
+            echo = False
+        else:
+            echo = True
+        executable = [self.executable, '-nw']
         wrapper = REPLWrapper(executable, orig_prompt, change_prompt,
-            prompt_emit_cmd=prompt_cmd, echo=True,
+            prompt_emit_cmd=prompt_cmd, echo=echo,
             continuation_prompt_regex=continuation_prompt)
         wrapper.child.linesep = '\r\n' if os.name == 'nt' else '\n'
         return wrapper
@@ -110,7 +110,6 @@ class ScilabKernel(ProcessMetaKernel):
             self.handle_plot_settings()
             setup = self._setup.strip()
             self.do_execute_direct(setup, True)
-
         resp = super(ScilabKernel, self).do_execute_direct(code, silent=silent)
         if silent:
             return resp
