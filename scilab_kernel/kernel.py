@@ -90,7 +90,7 @@ class ScilabKernel(ProcessMetaKernel):
             echo = False
         else:
             echo = True
-        executable = [self.executable, '-nw']
+        executable = self.executable + ' -nw'
         wrapper = REPLWrapper(executable, orig_prompt, change_prompt,
             prompt_emit_cmd=prompt_cmd, echo=echo,
             continuation_prompt_regex=continuation_prompt)
