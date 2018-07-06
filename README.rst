@@ -20,11 +20,11 @@ which means it features a standard set of magics.
 
 A sample notebook is available online_.
 
-You can specify the path to your Scilab executable by creating a `SCILAB_EXECUTABLE` environmental variable.
+You can specify the path to your Scilab executable by creating a ``SCILAB_EXECUTABLE`` environmental variable.  If you are using Sclib 6.0, use the ``scilab-cli`` executable.
 
 
 Advanced Installation Notes::
-We automatically install a Jupyter kernelspec when installing the 
+We automatically install a Jupyter kernelspec when installing the
 python package.  This location can be found using ``jupyter kernelspec list``.
 If the default location is not desired, you can remove the directory for the
 ``scilab`` kernel, and install using `python -m scilab_kernel install`.  See
