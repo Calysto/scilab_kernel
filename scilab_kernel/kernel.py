@@ -61,18 +61,20 @@ class ScilabKernel(ProcessMetaKernel):
             if os.name == 'nt':
                 executable = 'WScilex'
             else:
-                executable = 'scilab'
+                executable = 'scilab-adv-cli'
             if not which(executable):
                 msg = ('Scilab Executable not found, please add to path or set'
                        '"SCILAB_EXECUTABLE" environment variable')
                 raise OSError(msg)
+        if 'cli' not in executable:
+            executable + ' -nw'
         self._executable = executable
         return executable
 
     @property
     def banner(self):
         if self._banner is None:
-            call = '%s -version || true' % self.executable
+            call = '%s -version -nwni || true' % self.executable
             banner = subprocess.check_output(call, shell=True)
             self._banner = banner.decode('utf-8')
         return self._banner
@@ -91,8 +93,8 @@ class ScilabKernel(ProcessMetaKernel):
         else:
             echo = True
         executable = self.executable
-        if 'cli' not in executable:
-            executable + ' -nw'
+        with open(os.path.expanduser('~/test.log'), 'w') as fid:
+            fid.write('executable: ' + executable)
         wrapper = REPLWrapper(executable, orig_prompt, change_prompt,
             prompt_emit_cmd=prompt_cmd, echo=echo,
             continuation_prompt_regex=continuation_prompt)

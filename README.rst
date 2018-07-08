@@ -20,7 +20,7 @@ which means it features a standard set of magics.
 
 A sample notebook is available online_.
 
-You can specify the path to your Scilab executable by creating a ``SCILAB_EXECUTABLE`` environmental variable.  If you are using Sclib 6.0, use the ``scilab-cli`` executable.
+You can specify the path to your Scilab executable by creating a ``SCILAB_EXECUTABLE`` environmental variable.  If you are using Sclib 6.0, use the ``scilab-adv-cli`` executable.
 
 
 Advanced Installation Notes::
