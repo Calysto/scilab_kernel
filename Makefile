@@ -20,6 +20,8 @@ test: clean
 
 release: clean
 	pip install wheel
+	git co master
+	git pull origin master
 	python setup.py register
 	rm -rf dist
 	python setup.py bdist_wheel --universal
