@@ -1,6 +1,6 @@
 A Jupyter kernel for Scilab
 
-This requires `Jupyter Notebook <http://jupyter.readthedocs.org/en/latest/install.html>`_, and `Scilab <http://www.scilab.org/download/latest>`_.
+This requires Scilab and `Jupyter Notebook <http://jupyter.readthedocs.org/en/latest/install.html>`_, and `Scilab <http://www.scilab.org/download/latest>`_.
 
 To install::
 
@@ -20,7 +20,7 @@ which means it features a standard set of magics.
 
 A sample notebook is available online_.
 
-You can specify the path to your Scilab executable by creating a ``SCILAB_EXECUTABLE`` environmental variable.  If you are using Sclib 6.0, use the ``scilab-adv-cli`` executable.
+You can specify the path to your Scilab executable by creating a ``SCILAB_EXECUTABLE`` environmental variable.  Use the ``scilab-adv-cli`` executable if using a Posix-like OS, and ``WScilex-cli.exe`` if using Windows.
 
 
 Advanced Installation Notes::

@@ -59,7 +59,7 @@ class ScilabKernel(ProcessMetaKernel):
         executable = os.environ.get('SCILAB_EXECUTABLE', None)
         if not executable or not which(executable):
             if os.name == 'nt':
-                executable = 'WScilex'
+                executable = 'WScilex-cli'
             else:
                 executable = 'scilab-adv-cli'
             if not which(executable):
