@@ -102,7 +102,8 @@ class ScilabKernel(ProcessMetaKernel):
         return wrapper
 
     def Print(self, text):
-        text = [line.strip() for line in str(text).splitlines()
+        text = str(text).strip('\x1b[0m').replace('\u0008', '').strip()
+        text = [line.strip() for line in text.splitlines()
                 if (not line.startswith(chr(27)))]
         text = '\n'.join(text)
         if text:
