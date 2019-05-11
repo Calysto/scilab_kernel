@@ -37,7 +37,6 @@ The available plot settings are:
 .. code:: bash
 
     cat ~/.jupyter/scilab_kernel_config.py
-    # use Qt as the default backend for plots
     c.ScilabKernel.plot_settings = dict(format='svg')
 
 
