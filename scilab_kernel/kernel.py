@@ -27,6 +27,7 @@ def get_kernel_json():
 
 
 class ScilabKernel(ProcessMetaKernel):
+    app_name = 'scilab_kernel'
     implementation = 'Scilab Kernel'
     implementation_version = __version__,
     language = 'scilab'

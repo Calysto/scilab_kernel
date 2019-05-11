@@ -27,6 +27,19 @@ A sample notebook is available online_.
 You can specify the path to your Scilab executable by creating a ``SCILAB_EXECUTABLE`` environmental variable.  Use the ``scilab-adv-cli`` executable if using a Posix-like OS, and ``WScilex-cli.exe`` if using Windows.
 
 
+Configuration
+-------------
+The kernel can be configured by adding an ``scilab_kernel_config.py`` file to the
+``jupyter`` config path.  The ``ScilabKernel`` class offers ``plot_settings`` as a configurable traits.
+The available plot settings are:
+'format', 'backend', 'width', 'height', and 'resolution'.
+
+.. code:: bash
+    cat ~/.jupyter/scilab_kernel_config.py
+    # use Qt as the default backend for plots
+    c.ScilabKernel.plot_settings = dict(format='svg')
+
+
 Troubleshooting
 ---------------
 If the kernel is not starting, try running the following from a terminal.
