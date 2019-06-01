@@ -44,7 +44,8 @@ Troubleshooting
 ---------------
 If the kernel is not starting, try running the following from a terminal.
 
-.. code
+.. code:: bash
+
   python -m scilab_kernel.check
 
 Please include that output if opening an issue.
