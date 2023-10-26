@@ -4,6 +4,6 @@
              "-f", "{connection_file}"],
     "display_name": "Scilab",
     "language": "scilab",
-    "mimetype": "text/x-octave",
+    "mimetype": "text/x-scilab",
     "name": "scilab"
 }
