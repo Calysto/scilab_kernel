@@ -34,9 +34,9 @@ class ScilabKernel(ProcessMetaKernel):
     language_version = __version__,
     banner = "Scilab Kernel",
     language_info = {
-        'name': 'octave',
+        'name': 'scilab',
         'file_extension': '.sci',
-        "mimetype": "text/x-octave",
+        "mimetype": "text/x-scilab",
         "version": __version__,
         'help_links': MetaKernel.help_links,
     }
