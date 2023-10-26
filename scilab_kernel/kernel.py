@@ -9,7 +9,7 @@ import sys
 import tempfile
 from xml.dom import minidom
 
-from metakernel import MetaKernel, ProcessMetaKernel, REPLWrapper
+from metakernel import MetaKernel, ProcessMetaKernel, REPLWrapper, pexpect
 from metakernel.pexpect import which
 from IPython.display import Image, SVG
 
@@ -34,9 +34,9 @@ class ScilabKernel(ProcessMetaKernel):
     language_version = __version__,
     banner = "Scilab Kernel",
     language_info = {
-        'name': 'octave',
+        'name': 'scilab',
         'file_extension': '.sci',
-        "mimetype": "text/x-octave",
+        "mimetype": "text/x-scilab",
         "version": __version__,
         'help_links': MetaKernel.help_links,
     }
@@ -52,13 +52,15 @@ class ScilabKernel(ProcessMetaKernel):
     _banner = None
 
     _executable = None
+    _default_args = None
 
     @property
     def executable(self):
         if self._executable:
             return self._executable
         executable = os.environ.get('SCILAB_EXECUTABLE', None)
-        if not executable or not which(executable):
+        self.log.warning('SCILAB_EXECUTABLE env. variable: ' + executable)
+        if not which(executable):
             if os.name == 'nt':
                 executable = 'WScilex-cli'
             else:
@@ -68,14 +70,19 @@ class ScilabKernel(ProcessMetaKernel):
                        '"SCILAB_EXECUTABLE" environment variable')
                 raise OSError(msg)
         if 'cli' not in executable:
-            executable + ' -nw'
+            self._default_args = ['-nw']
+        else:
+            self._default_args = []
+        self.log.debug(' scilab_kernel._executable: ' + executable)
+        self.log.debug(' scilab_kernel._default_args: ' + ' '.join(self._default_args))
         self._executable = executable
         return executable
 
     @property
     def banner(self):
         if self._banner is None:
-            call = '%s -version -nwni || true' % self.executable
+            executable = self.executable
+            call = [executable] + self._default_args + ['-version']
             banner = subprocess.check_output(call, shell=True)
             self._banner = banner.decode('utf-8')
         return self._banner
@@ -94,11 +101,14 @@ class ScilabKernel(ProcessMetaKernel):
         else:
             echo = True
         executable = self.executable
-        with open(os.path.expanduser('~/test.log'), 'w') as fid:
-            fid.write('executable: ' + executable)
-        wrapper = REPLWrapper(executable, orig_prompt, change_prompt,
+        child = pexpect.spawnu(executable, self._default_args,
+            echo=echo,
+            codec_errors="ignore",
+            encoding="utf-8")
+        wrapper = REPLWrapper(child, orig_prompt, change_prompt,
             prompt_emit_cmd=prompt_cmd, echo=echo,
             continuation_prompt_regex=continuation_prompt)
+        
         wrapper.child.linesep = '\r\n' if os.name == 'nt' else '\n'
         return wrapper
 
@@ -113,6 +123,7 @@ class ScilabKernel(ProcessMetaKernel):
     def do_execute_direct(self, code, silent=False):
         if self._first:
             self._first = False
+            self.log.debug('execute first:' + code)
             self.handle_plot_settings()
             setup = self._setup.strip()
             self.do_execute_direct(setup, True)
