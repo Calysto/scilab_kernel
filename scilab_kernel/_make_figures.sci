@@ -12,6 +12,6 @@ function _make_figures(plot_dir, plot_format)
       else
         xs2svg(id, outfile);
       end
-      close(id);
+      close(get_figure_handle(id));
     end
  endfunction
