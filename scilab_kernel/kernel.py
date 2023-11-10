@@ -3,10 +3,12 @@ from __future__ import print_function, absolute_import
 import codecs
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import winreg
 from xml.dom import minidom
 
 from metakernel import MetaKernel, ProcessMetaKernel, REPLWrapper, pexpect
@@ -58,18 +60,12 @@ class ScilabKernel(ProcessMetaKernel):
     def executable(self):
         if self._executable:
             return self._executable
-        executable = os.environ.get('SCILAB_EXECUTABLE', None)
-        if executable:
-            self.log.warning('SCILAB_EXECUTABLE env. variable: ' + executable)
-        if not executable or not which(executable):
-            if os.name == 'nt':
-                executable = 'WScilex-cli'
-            else:
-                executable = 'scilab-adv-cli'
-            if not which(executable):
-                msg = ('Scilab Executable not found, please add to path or set'
-                       '"SCILAB_EXECUTABLE" environment variable')
-                raise OSError(msg)
+        executables  = list(self._detect_executable())
+        if not executables:
+            msg = ('Scilab Executable not found, please add to path or set'
+                    '"SCILAB_EXECUTABLE" environment variable')
+            raise OSError(msg)
+        executable = executables[0]
         if 'cli' not in executable:
             self._default_args = ['-nw']
         else:
@@ -82,17 +78,48 @@ class ScilabKernel(ProcessMetaKernel):
     @property
     def banner(self):
         if self._banner is None:
-            executable = self.executable
-            call = [executable] + self._default_args + ['-version']
-            banner = subprocess.check_output(call, shell=True)
-            self._banner = banner.decode('utf-8')
-            self.log.warning(' scilab_kernel._banner: ' + self._banner)
+            resp = self.do_execute_direct("getversion()", silent=True)
+            if resp:
+                #  ans  =
+                #
+                #  "scilab-branch-2024.1"
+                result = re.search(r'scilab-([a-zA-Z0-9\-]+)', resp.output)
+                if result:
+                    self._banner = result.group(1)
+                    self.log.warning(' scilab_kernel._banner: ' + self._banner)
+        if self._banner is None:
+            self._banner = "Unknown version"
         return self._banner
+
+    def _detect_executable(self):
+        # the env. variable can be setup
+        executable = os.environ.get('SCILAB_EXECUTABLE', None)
+        if executable:
+            self.log.warning('SCILAB_EXECUTABLE env. variable: ' + executable)
+        yield executable
+
+        # read the windows registry
+        if os.name == 'nt':
+            with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, "Scilab5.sce\shell\open\command") as key:
+                cmd : str = winreg.EnumValue(key, 0)[1]
+                executable = cmd.split(r'"')[1].replace("wscilex.exe", "wscilex-cli.exe")
+                self.log.warning('Windows registry binary: ' + executable)
+                yield executable
+        
+        # detect on the path
+        if os.name == 'nt':
+            executable = 'WScilex-cli'
+        else:
+            executable = 'scilab-adv-cli'
+        executable = which(executable)
+        if executable:
+            yield executable
 
     def makeWrapper(self):
         """Start a Scilab process and return a :class:`REPLWrapper` object.
         """
-        orig_prompt = '-->'
+
+        orig_prompt = r'-[0-9]*->'
         prompt_cmd = None
         change_prompt = None
         continuation_prompt = '  >'
