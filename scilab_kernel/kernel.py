@@ -60,12 +60,13 @@ class ScilabKernel(ProcessMetaKernel):
     def executable(self):
         if self._executable:
             return self._executable
-        executables  = list(self._detect_executable())
-        if not executables:
+        
+        executable = next(self._detect_executable())
+        if not executable:
             msg = ('Scilab Executable not found, please add to path or set'
                     '"SCILAB_EXECUTABLE" environment variable')
             raise OSError(msg)
-        executable = executables[0]
+        
         if 'cli' not in executable:
             self._default_args = ['-nw']
         else:
@@ -96,7 +97,7 @@ class ScilabKernel(ProcessMetaKernel):
         executable = os.environ.get('SCILAB_EXECUTABLE', None)
         if executable:
             self.log.warning('SCILAB_EXECUTABLE env. variable: ' + executable)
-        yield executable
+            yield executable
 
         # read the windows registry
         if os.name == 'nt':
@@ -113,7 +114,11 @@ class ScilabKernel(ProcessMetaKernel):
             executable = 'scilab-adv-cli'
         executable = which(executable)
         if executable:
+            self.log.warning('executable in the path: ' + executable)
             yield executable
+
+        # default to None, will report an error
+        yield None
 
     def makeWrapper(self):
         """Start a Scilab process and return a :class:`REPLWrapper` object.
