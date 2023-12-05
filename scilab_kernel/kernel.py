@@ -42,10 +42,11 @@ class ScilabKernel(ProcessMetaKernel):
     }
     kernel_json = get_kernel_json()
 
-    _setup = """
-    try,getd("."),end
-    try,getd("%s"),end
-    """ % os.path.dirname(__file__)
+    _setup = (
+        f'try,getd("."),end\n'
+        f'try,getd("{os.path.dirname(__file__)}"),end\n'
+        f'lines(0, %inf); // TODO: Scilab kernel does not detect output width\n'
+    )
 
     _first = True
 
@@ -113,6 +114,10 @@ class ScilabKernel(ProcessMetaKernel):
         
         wrapper.child.linesep = '\r\n' if os.name == 'nt' else '\n'
         return wrapper
+    
+    def Write(self, message):
+        clean_msg = message.strip("\n\r \t")
+        super(ScilabKernel, self).Write(clean_msg)
 
     def Print(self, text):
         text = str(text).strip('\x1b[0m').replace('\u0008', '').strip()
@@ -126,8 +131,7 @@ class ScilabKernel(ProcessMetaKernel):
         if self._first:
             self._first = False
             self.handle_plot_settings()
-            setup = self._setup.strip()
-            self.do_execute_direct(setup, True)
+            self.do_execute_direct(self._setup, True)
         resp = super(ScilabKernel, self).do_execute_direct(code, silent=silent)
         if silent:
             return resp
