@@ -63,7 +63,7 @@ class ScilabKernel(ProcessMetaKernel):
         
         executable = next(self._detect_executable())
         if not executable:
-            msg = ('Scilab Executable not found, please add to path or set'
+            msg = ('Scilab Executable not found, please add to path or set '
                     '"SCILAB_EXECUTABLE" environment variable')
             raise OSError(msg)
         
@@ -101,11 +101,14 @@ class ScilabKernel(ProcessMetaKernel):
 
         # read the windows registry
         if os.name == 'nt':
-            with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, "Scilab5.sce\shell\open\command") as key:
-                cmd : str = winreg.EnumValue(key, 0)[1]
-                executable = cmd.split(r'"')[1].replace("wscilex.exe", "wscilex-cli.exe")
-                self.log.warning('Windows registry binary: ' + executable)
-                yield executable
+            try:
+                with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, "Scilab5.sce\shell\open\command") as key:
+                    cmd : str = winreg.EnumValue(key, 0)[1]
+                    executable = cmd.split(r'"')[1].replace("wscilex.exe", "wscilex-cli.exe")
+                    self.log.warning('Windows registry binary: ' + executable)
+                    yield executable
+            except FileNotFoundError as e:
+                pass
         
         # detect on the path
         if os.name == 'nt':
