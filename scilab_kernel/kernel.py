@@ -45,7 +45,7 @@ class ScilabKernel(ProcessMetaKernel):
     kernel_json = get_kernel_json()
 
     _setup = (
-        f'lines(0, %inf); // TODO: Scilab kernel does not detect output width\n'
+        f'lines(0, 800); // TODO: Scilab kernel does not detect output width\n'
         f'mode(0);\n'
         f'try,getd("."),end\n'
         f'try,getd("{os.path.dirname(__file__)}"),end\n'
@@ -86,7 +86,7 @@ class ScilabKernel(ProcessMetaKernel):
                 #  ans  =
                 #
                 #  "scilab-branch-2024.1"
-                result = re.search(r'scilab-([a-zA-Z0-9\-]+)', resp.output)
+                result = re.search(r'scilab-([a-zA-Z0-9\-\.]+)', resp.output)
                 if result:
                     self._banner = result.group(1)
                     self.log.warning(' scilab_kernel._banner: ' + self._banner)
@@ -132,7 +132,7 @@ class ScilabKernel(ProcessMetaKernel):
         orig_prompt = r'-[0-9]*->'
         prompt_cmd = None
         change_prompt = None
-        continuation_prompt = '  >'
+        continuation_prompt = '  \>'
         self._first = True
         if os.name == 'nt':
             prompt_cmd = 'printf("-->")'
@@ -152,8 +152,8 @@ class ScilabKernel(ProcessMetaKernel):
         return wrapper
     
     def Write(self, message):
-        clean_msg = message.strip("\n\r \t")
-        super(ScilabKernel, self).Write(clean_msg)
+        clean_msg = message.strip("\n\r\t")
+        super(ScilabKernel, self).Write(message)
 
     def Print(self, text):
         text = str(text).strip('\x1b[0m').replace('\u0008', '').strip()
