@@ -132,7 +132,8 @@ class ScilabKernel(ProcessMetaKernel):
         if self._first:
             self._first = False
             self.handle_plot_settings()
-            self.do_execute_direct(self._setup, True)
+            setup = self._setup.strip()
+            self.do_execute_direct(setup, True)
         resp = super(ScilabKernel, self).do_execute_direct(code, silent=silent)
         if silent:
             return resp
