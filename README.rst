@@ -39,6 +39,9 @@ The available plot settings are:
     cat ~/.jupyter/scilab_kernel_config.py
     c.ScilabKernel.plot_settings = dict(format='svg')
 
+Scilab default behavior is setup using `lines(0, %inf)` and `mode(0)`. You can change these behaviors using scilab code on cells.
+
+Files ending with `.sci` in the current directory are loaded.
 
 Troubleshooting
 ---------------

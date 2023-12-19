@@ -43,9 +43,10 @@ class ScilabKernel(ProcessMetaKernel):
     kernel_json = get_kernel_json()
 
     _setup = (
+        f'lines(0, %inf); // TODO: Scilab kernel does not detect output width\n'
+        f'mode(0);\n'
         f'try,getd("."),end\n'
         f'try,getd("{os.path.dirname(__file__)}"),end\n'
-        f'lines(0, %inf); // TODO: Scilab kernel does not detect output width\n'
     )
 
     _first = True
