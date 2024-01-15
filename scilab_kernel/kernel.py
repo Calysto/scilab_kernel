@@ -8,7 +8,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import winreg
+import importlib
+if importlib.find_loader('winreg'):
+    import winreg
 from xml.dom import minidom
 
 from metakernel import MetaKernel, ProcessMetaKernel, REPLWrapper, pexpect
