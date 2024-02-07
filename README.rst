@@ -6,26 +6,36 @@ Prerequisites
 
 Installation
 ------------
+To install using pip::
 
     pip install scilab_kernel
 
-To use it, run one of:
+Add ``--user`` to install in the user-level environment instead of the system environment.
+
+This kernel needs the Scilab executable to be run, it which will be searched in this order:
+ - Using environment variable ``SCILAB_EXECUTABLE``,
+ - Under Windows only, based on registry,
+ - Using the ``PATH`` environment variable.
+
+Use the ``scilab-adv-cli`` executable if using a Posix-like OS, and ``WScilex-cli.exe`` if using Windows.
+
+Usage
+-----
+
+To use the kernel, run one of:
 
 .. code:: shell
 
-    ipython notebook
+    jupyter notebook  # or ``jupyter lab``, if available
     # In the notebook interface, select Scilab from the 'New' menu
-    ipython qtconsole --kernel scilab
-    ipython console --kernel scilab
+    jupyter qtconsole --kernel scilab
+    jupyter console --kernel scilab
 
 This kernel is based on `MetaKernel <http://pypi.python.org/pypi/metakernel>`_,
-which means it features a standard set of magics.  For a full list of magics,
+which means it features a standard set of magics (such as ``%%html``). For a full list of magics,
 run ``%lsmagic`` in a cell.
 
 A sample notebook is available online_.
-
-You can specify the path to your Scilab executable by creating a ``SCILAB_EXECUTABLE`` environmental variable.  Use the ``scilab-adv-cli`` executable if using a Posix-like OS, and ``WScilex-cli.exe`` if using Windows.
-
 
 Configuration
 -------------
@@ -45,14 +55,33 @@ Files ending with `.sci` in the current directory are loaded.
 
 Troubleshooting
 ---------------
-If the kernel is not starting, try running the following from a terminal.
 
-.. code:: bash
+Kernel Times Out While Starting
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If the kernel does not start, run the following command from a terminal:
+
+.. code:: shell
 
   python -m scilab_kernel.check
 
-Please include that output if opening an issue.
+This can help diagnose problems with setting up integration with Octave.  If in doubt,
+create an issue with the output of that command.
 
+Kernel is Not Listed
+~~~~~~~~~~~~~~~~~~~~
+If the kernel is not listed as an available kernel, first try the following command:
+
+.. code:: shell
+
+    python -m scilab_kernel install --user
+
+If the kernel is still not listed, verify that the following point to the same
+version of python:
+
+.. code:: shell
+
+    which python  # use "where" if using cmd.exe
+    which jupyter
 
 Advanced Installation Notes
 ---------------------------

@@ -1,0 +1,77 @@
+[build-system]
+requires = ["hatchling >=1.5"]
+build-backend = "hatchling.build"
+
+[project]
+name = "scilab_kernel"
+description = "'A Jupyter kernel for Scilab.'"
+license = {file = "LICENSE.txt"}
+authors = [
+    {name = "'Steven Silvester'", email = "steven.silvester@ieee.org"},
+    {name = "'Douglas Blank'", email = "doug.blank@gmail.com"}
+    ]
+maintainers = [
+    {name = "Vincent Couvert", email = "vincent.couvert@3ds.com"}
+]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development",
+    "Topic :: System :: Shells",
+]
+urls = {Homepage = "http://github.com/Calysto/scilab_kernel"}
+requires-python = ">=3.7"
+dependencies = [
+    "metakernel >=0.24.0",
+    "jupyter_client >=4.3.0",
+    "ipykernel",
+]
+dynamic = ["version"]
+
+[project.readme]
+file = "README.rst"
+content-type = "text/x-rst"
+
+[project.optional-dependencies]
+test = ["pytest", "nbconvert", "jupyter_kernel_test", "nbconvert"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"jupyter-data/share" = "share"
+
+[tool.hatch.build.targets.sdist]
+artifacts = ["jupyter-data"]
+include = [
+    "/jupyter-data",
+    "/scilab_kernel",
+    "/*.md",
+    "/*.ipynb",
+    "/*.py"
+]
+
+[tool.hatch.version]
+path = "scilab_kernel/_version.py"
+source = "code"
+
+[tool.jupyter-releaser]
+skip = ["check-links"]
+
+[tool.jupyter-releaser.hooks]
+after-prep-git = ["make data-files"]
+
+[tool.tbump.version]
+current = "0.10.0"
+regex = '''
+  (?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)
+  ((?P<channel>a|b|rc|.dev)(?P<release>\d+))?
+'''
+
+[tool.tbump.git]
+message_template = "Bump to {new_version}"
+tag_template = "v{new_version}"
+
+[[tool.tbump.file]]
+src = "scilab_kernel/_version.py"
