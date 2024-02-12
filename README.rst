@@ -45,7 +45,7 @@ The available plot settings are:
 
  - 'format': 'svg' (default), 'png', 'jpg',
  - 'backend': 'inline',
- - 'size': 'width,height' ('560,420' by default),
+ - 'size': '<width>,<height>' ('560,420' by default),
  - 'antialiasing': for 'svg' backend only, False by default.
 
 .. code:: python
