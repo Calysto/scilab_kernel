@@ -211,6 +211,7 @@ class ScilabKernel(ProcessMetaKernel):
         settings.setdefault('backend', 'inline')
         settings.setdefault('format', 'svg')
         settings.setdefault('size', '560,420')
+        settings.setdefault('antialiasing', False)
 
         cmds = []
 
@@ -295,6 +296,13 @@ class ScilabKernel(ProcessMetaKernel):
             im.data = self._fix_svg_size(im.data)
         except Exception:
             pass
+        try:
+            settings = self.plot_settings
+            print(settings)
+            if settings['antialiasing'] == True:
+                im.data = self._fix_svg_antialiasing(im.data)
+        except Exception:
+            pass
         return im
 
     def _fix_svg_size(self, data):
@@ -325,3 +333,19 @@ class ScilabKernel(ProcessMetaKernel):
         svg.setAttribute('width', '%dpx' % width)
         svg.setAttribute('height', '%dpx' % height)
         return svg.toxml()
+
+    def _fix_svg_antialiasing(self, data):
+        """Batik API to change line art antialias is broken.
+        We change every occurence of shape-rendering:crispEdges
+        in style attribute of g elements by shape-rendering:geometricPrecision.
+        """
+        # Minidom does not support parseUnicode, so it must be decoded
+        # to accept unicode characters
+        parsed = minidom.parseString(data.encode('utf-8'))
+        (svg,) = parsed.getElementsByTagName('svg')
+        g = svg.getElementsByTagName('g')
+        for i in range(len(g)):
+            stylestr = g[i].getAttribute('style').replace("shape-rendering:crispEdges","shape-rendering:geometricPrecision")
+            g[i].setAttribute('style',stylestr)
+        return svg.toxml()
+
