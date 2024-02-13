@@ -298,7 +298,6 @@ class ScilabKernel(ProcessMetaKernel):
             pass
         try:
             settings = self.plot_settings
-            print(settings)
             if settings['antialiasing'] == True:
                 im.data = self._fix_svg_antialiasing(im.data)
         except Exception:
