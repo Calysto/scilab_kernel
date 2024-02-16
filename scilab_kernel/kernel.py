@@ -211,8 +211,8 @@ class ScilabKernel(ProcessMetaKernel):
         settings.setdefault('backend', 'inline')
         settings.setdefault('format', 'svg')
         settings.setdefault('size', '560,420')
-        settings.setdefault('antialiasing', False)
-
+        settings.setdefault('antialiasing', True)
+        
         cmds = []
 
         self._plot_fmt = settings['format']
@@ -268,7 +268,7 @@ class ScilabKernel(ProcessMetaKernel):
             The directory in which to create the plots.
         """
         images = []
-        for fname in reversed(os.listdir(plot_dir)):
+        for fname in sorted(os.listdir(plot_dir)):
             filename = os.path.join(plot_dir, fname)
             try:
                 if fname.lower().endswith('.svg'):
@@ -298,7 +298,7 @@ class ScilabKernel(ProcessMetaKernel):
             pass
         try:
             settings = self.plot_settings
-            if settings['antialiasing'] == True:
+            if settings['antialiasing']:
                 im.data = self._fix_svg_antialiasing(im.data)
         except Exception:
             pass
@@ -335,16 +335,15 @@ class ScilabKernel(ProcessMetaKernel):
 
     def _fix_svg_antialiasing(self, data):
         """Batik API to change line art antialias is broken.
-        We change every occurence of shape-rendering:crispEdges
-        in style attribute of g elements by shape-rendering:geometricPrecision.
+        We add shape-rendering:geometricPrecision to content with style containing "clip-path:url(#clipPath1)"
         """
         # Minidom does not support parseUnicode, so it must be decoded
         # to accept unicode characters
         parsed = minidom.parseString(data.encode('utf-8'))
         (svg,) = parsed.getElementsByTagName('svg')
-        g = svg.getElementsByTagName('g')
+        g = svg.getElementsByTagName('path')
         for i in range(len(g)):
-            stylestr = g[i].getAttribute('style').replace("shape-rendering:crispEdges","shape-rendering:geometricPrecision")
-            g[i].setAttribute('style',stylestr)
+            stylestr = g[i].getAttribute('style').replace("clip-path:url(#clipPath", "shape-rendering:geometricPrecision; clip-path:url(#clipPath")
+            g[i].setAttribute('style', stylestr)
         return svg.toxml()
 
