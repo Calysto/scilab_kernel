@@ -40,14 +40,17 @@ A sample notebook is available online_.
 Configuration
 -------------
 The kernel can be configured by adding an ``scilab_kernel_config.py`` file to the
-``jupyter`` config path.  The ``ScilabKernel`` class offers ``plot_settings`` as a configurable traits.
+``jupyter`` config path (for example ``~/.jupyter/scilab_kernel_config.py``.  The ``ScilabKernel`` class offers ``plot_settings`` as a configurable traits.
 The available plot settings are:
-'format', 'backend', 'width', 'height', and 'resolution'.
 
-.. code:: bash
+ - 'format': 'svg' (default), 'png', 'jpg',
+ - 'backend': 'inline',
+ - 'size': '<width>,<height>' ('560,420' by default),
+ - 'antialiasing': for 'svg' backend only, True by default.
 
-    cat ~/.jupyter/scilab_kernel_config.py
-    c.ScilabKernel.plot_settings = dict(format='svg')
+.. code:: python
+
+    c.ScilabKernel.plot_settings = dict(format='svg', backend='inline', size='560,420', antialiasing=False)
 
 Scilab default behavior is setup using `lines(0, 800)` and `mode(0)`. You can change these behaviors using scilab code on cells.
 
