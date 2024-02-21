@@ -3,7 +3,7 @@ requires = ["hatchling >=1.5"]
 build-backend = "hatchling.build"
 
 [project]
-name = "scilab_kernel"
+name = "scilab-kernel"
 description = "'A Jupyter kernel for Scilab.'"
 license = {file = "LICENSE.txt"}
 authors = [
