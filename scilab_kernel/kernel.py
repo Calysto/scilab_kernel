@@ -5,7 +5,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 import importlib
@@ -111,7 +110,7 @@ class ScilabKernel(ProcessMetaKernel):
                     executable = cmd.split(r'"')[1].replace("wscilex.exe", "wscilex-cli.exe")
                     self.log.warning('Windows registry binary: ' + executable)
                     yield executable
-            except FileNotFoundError as e:
+            except FileNotFoundError:
                 pass
         
         # detect on the path
