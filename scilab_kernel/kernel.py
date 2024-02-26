@@ -155,7 +155,7 @@ class ScilabKernel(ProcessMetaKernel):
     
     def Write(self, message):
         clean_msg = message.strip("\n\r\t")
-        super(ScilabKernel, self).Write(message)
+        super(ScilabKernel, self).Write(clean_msg)
 
     def Print(self, text):
         text = str(text).strip('\x1b[0m').replace('\u0008', '').strip()
