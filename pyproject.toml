@@ -74,4 +74,4 @@ message_template = "Bump to {new_version}"
 tag_template = "v{new_version}"
 
 [[tool.tbump.file]]
-src = "scilab_kernel/_version.py"
+src = "scilab_kernel/__init__.py"
