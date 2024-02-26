@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 import importlib
-if importlib.find_loader('winreg'):
+if importlib.util.find_spec('winreg'):
     import winreg
 from xml.dom import minidom
 
