@@ -31,6 +31,8 @@ To use the kernel, run one of:
     jupyter qtconsole --kernel scilab
     jupyter console --kernel scilab
 
+If ``jupyter`` executable is not found in your ``PATH``, try ``python -m notebook`` instead.
+
 This kernel is based on `MetaKernel <http://pypi.python.org/pypi/metakernel>`_,
 which means it features a standard set of magics (such as ``%%html``). For a full list of magics,
 run ``%lsmagic`` in a cell.
