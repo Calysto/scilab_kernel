@@ -6,8 +6,10 @@ import os
 import re
 import shutil
 import sys
+import platform
 import tempfile
 import importlib
+import subprocess
 if importlib.util.find_spec('winreg'):
     import winreg
 from xml.dom import minidom
