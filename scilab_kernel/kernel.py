@@ -6,8 +6,10 @@ import os
 import re
 import shutil
 import sys
+import platform
 import tempfile
 import importlib
+import subprocess
 if importlib.util.find_spec('winreg'):
     import winreg
 from xml.dom import minidom
@@ -112,7 +114,18 @@ class ScilabKernel(ProcessMetaKernel):
                     yield executable
             except FileNotFoundError:
                 pass
-        
+
+        # detect macOS bundle
+        if platform.system() == 'Darwin':
+            process = subprocess.run(['mdfind', '-onlyin', '/Applications', 'kMDItemCFBundleIdentifier=org.scilab.modules.jvm.Scilab'], 
+                                 stdout=subprocess.PIPE, 
+                                 universal_newlines=True)
+            bundles = process.stdout
+            if len(bundles) > 0:
+                executable = bundles.split('\n', 1)[0] + "/Contents/bin/scilab-adv-cli"
+                self.log.warning('macOS Application binary: ' + executable)
+                yield executable
+
         # detect on the path
         if os.name == 'nt':
             executable = 'WScilex-cli'
