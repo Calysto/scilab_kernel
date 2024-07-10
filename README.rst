@@ -14,7 +14,8 @@ Add ``--user`` to install in the user-level environment instead of the system en
 
 This kernel needs the Scilab executable to be run, it which will be searched in this order:
  - Using environment variable ``SCILAB_EXECUTABLE``,
- - Under Windows only, based on registry,
+ - Under Windows, based on registry,
+ - Under macOS, based on Spotlight database,
  - Using the ``PATH`` environment variable.
 
 Use the ``scilab-adv-cli`` executable if using a Posix-like OS, and ``WScilex-cli.exe`` if using Windows.
