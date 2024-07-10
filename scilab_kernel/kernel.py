@@ -37,7 +37,6 @@ class ScilabKernel(ProcessMetaKernel):
     implementation_version = __version__,
     language = 'scilab'
     language_version = __version__,
-    banner = "Scilab Kernel",
     language_info = {
         'name': 'scilab',
         'file_extension': '.sci',
