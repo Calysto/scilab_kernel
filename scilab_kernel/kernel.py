@@ -83,14 +83,14 @@ class ScilabKernel(ProcessMetaKernel):
     @property
     def banner(self):
         if self._banner is None:
-            resp = self.do_execute_direct("getversion()", silent=True)
+            resp = self.do_execute_direct("getversion scilab", silent=True)
             if resp:
-                #  ans  =
+                #  ans = [1x4 double]
                 #
-                #  "scilab-branch-2024.1"
-                result = re.search(r'scilab-([a-zA-Z0-9\-\.]+)', resp.output)
+                #    2025.   0.   0.   1.730D+09
+                result = re.search(r'([0-9]+)\. +([0-9]+)\.', resp.output)
                 if result:
-                    self._banner = result.group(1)
+                    self._banner = result.group(1) + "." +  result.group(2)
                     self.log.warning(' scilab_kernel._banner: ' + self._banner)
         if self._banner is None:
             self._banner = "Unknown version"
