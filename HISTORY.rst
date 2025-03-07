@@ -3,6 +3,20 @@
 Release History
 ---------------
 
+0.10.2 (2025-03-07)
++++++++++++++++++++
+- macOS Scilab application bundle detection.
+
+0.10.2 (2024-04-05)
++++++++++++++++++++
+- Bug fixes & minor improvements.
+
+0.10.0 (2024-02-21)
++++++++++++++++++++
+- Compliance with recent Scilab versions.
+- Better detection of Scilab exectable (Windows registry, ...).
+- Anti-aliasing management in SVG files.
+
 0.8 (2017-01-07)
 ++++++++++++++++
 - Clean up plot handling and improve robustness.
